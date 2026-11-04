@@ -20,6 +20,9 @@ export const VARIABLES = {
   endereco_loja: { label: "Endereço da loja", example: "Rua XV de Novembro, 100" },
   data: { label: "Data da entrevista", example: "10/11/2026" },
   hora: { label: "Horário da entrevista", example: "14:30" },
+  horario: { label: "Horário da entrevista", example: "14:30" },
+  link: { label: "Link da entrevista online", example: "https://meet.google.com/abc-defg-hij" },
+  endereco: { label: "Endereço da entrevista presencial", example: "Rua XV de Novembro, 100 - Centro, Itajaí" },
   local_ou_link: { label: "Link ou local da entrevista", example: "https://meet.google.com/abc-defg-hij" },
   recrutador: { label: "Nome de quem envia", example: "Carla" },
   empresa: { label: "Nome da empresa", example: "Nossa empresa" },
@@ -34,7 +37,9 @@ export const PURPOSES = ["Convocação para entrevista", "Lembrete de entrevista
 /** "{nome}, sua entrevista..." → { metaBody: "{{1}}, sua entrevista...", variables: ["nome"] } */
 export function toMetaFormat(text: string) {
   const variables: string[] = [];
-  const metaBody = text.replace(/\{([a-z_0-9]+)\}/gi, (_, raw: string) => {
+  // Aceita {nome} e {{nome}} (nomes começam por letra; {{1}} é o formato da própria Meta).
+  const metaBody = text.replace(/\{\{([a-z][a-z_0-9]*)\}\}|\{([a-z][a-z_0-9]*)\}/gi, (_, a: string | undefined, b: string | undefined) => {
+    const raw = (a ?? b)!;
     const k = raw.toLowerCase();
     let i = variables.indexOf(k);
     if (i < 0) i = variables.push(k) - 1;
@@ -71,7 +76,7 @@ const schema = z.object({
     .min(10, "Escreva o texto da mensagem.")
     .max(1024, "Máximo de 1.024 caracteres (limite da Meta).")
     .refine((t) => !/\{\s*\}/.test(t), "Há uma variável vazia: use {nome}, {vaga}...")
-    .refine((t) => !/^\s*\{[a-z_0-9]+\}|\{[a-z_0-9]+\}\s*[.!?]?\s*$/i.test(t), "A Meta não aceita variável no começo ou no fim do texto."),
+    .refine((t) => !/^\s*\{\{?[a-z_0-9]+\}\}?|\{\{?[a-z_0-9]+\}\}?\s*[.!?]?\s*$/i.test(t), "Comece e termine o texto com palavras, não com variável (regra da Meta)."),
 });
 
 export async function listTemplates(opts: { activeOnly?: boolean } = {}) {

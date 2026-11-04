@@ -22,7 +22,9 @@ export default function TemplatesPage() {
 async function Content() {
   const actor = await requirePageActor();
   if (!can(actor, "templates.manage")) return <NoPermission />;
-  const [templates, status] = await Promise.all([listTemplates(), integrationStatus()]);
+  const [all, status] = await Promise.all([listTemplates(), integrationStatus()]);
+  // Os textos das automações são editados em Mensagens automáticas.
+  const templates = all.filter((t) => t.purpose !== "Automação");
   const connected = status.status === "CONNECTED";
   const purposesTaken = new Set(templates.map((t) => t.purpose));
   return (

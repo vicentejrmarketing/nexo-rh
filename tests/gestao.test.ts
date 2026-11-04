@@ -117,7 +117,7 @@ describe("candidatos", () => {
     const c = await createCandidate(admin, baseCand({ email: "ANA@Mail.com", sameWhatsapp: "on" }), { resume: { name: "cv.pdf", type: "application/pdf", data: PDF } });
     const saved = await db.candidate.findUniqueOrThrow({ where: { id: c.id }, include: { consents: true, attachments: true } });
     expect(saved).toMatchObject({ phoneE164: "+5547999990000", whatsappE164: "+5547999990000", email: "ana@mail.com", inTalentPool: true });
-    expect(saved.consents.map((x) => x.purpose).sort()).toEqual(["RECRUITMENT_PROCESS", "TALENT_POOL"]);
+    expect(saved.consents.map((x) => x.purpose).sort()).toEqual(["RECRUITMENT_PROCESS", "TALENT_POOL", "WHATSAPP_CONTACT"]);
     expect(saved.retentionUntil!.getTime()).toBeGreaterThan(Date.now() + 700 * 86400000);
     expect(saved.attachments).toHaveLength(1);
   });

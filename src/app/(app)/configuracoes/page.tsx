@@ -25,6 +25,7 @@ const SECTIONS: Section[] = [
   { title: "Lojas", description: "Unidades, responsáveis e status.", icon: Store, href: "/lojas", anyOf: ["stores.manage"] },
   { title: "Cargos", description: "Cargos usados nas vagas e no cadastro de candidatos.", icon: BriefcaseBusiness, href: "/configuracoes/cargos", anyOf: ["settings.manage"] },
   { title: "Dados da empresa e LGPD", description: "Razão social, contato, política de privacidade e retenção.", icon: Building2, href: "/configuracoes/empresa", anyOf: ["settings.manage"] },
+  { title: "Mensagens automáticas", description: "O que enviar em cada etapa, entrevistas e lembretes.", icon: MessageSquareText, href: "/configuracoes/automacoes", anyOf: ["templates.manage"] },
   { title: "Modelos de mensagens", description: "Textos de convocação, lembrete, aprovação e reprovação.", icon: MessageSquareText, href: "/configuracoes/modelos", anyOf: ["templates.manage"] },
 ];
 

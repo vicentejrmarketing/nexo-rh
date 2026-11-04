@@ -1,4 +1,5 @@
 import "server-only";
+import { ensureDefaultRules, onInterviewCanceled, onInterviewRescheduled, onInterviewScheduled } from "@/server/modules/automations/service";
 import { z } from "zod";
 import type { InterviewStatus, Prisma } from "@/generated/prisma/client";
 import { db, type Tx } from "@/server/db/client";
@@ -230,6 +231,7 @@ export async function scheduleInterview(actor: Actor, processId: string, raw: Sl
   if (!parsed.success) throw new ValidationError(fieldErrorsOf(parsed.error));
   const d = parsed.data;
   await validateSlotRefs(actor, d, true);
+  await ensureDefaultRules();
 
   return db.$transaction(async (tx) => {
     await assertFree(tx, d.scheduledAt, d.durationMinutes, { interviewerId: d.interviewerId, candidateId: p.candidateId });
@@ -249,6 +251,7 @@ export async function scheduleInterview(actor: Actor, processId: string, raw: Sl
         await tx.candidateJob.update({ where: { id: p.id }, data: { lastMovedAt: new Date() } });
       }
     }
+    await onInterviewScheduled(tx, { id: i.id, candidateJobId: p.id, scheduledAt: i.scheduledAt, mode: i.mode });
     await audit(tx, {
       actorId: actor.id, action: "interview.schedule", entityType: "Interview", entityId: i.id, storeId: d.storeId, ipAddress: ip,
       summary: `Agendou entrevista ${MODE_LABEL[d.mode].toLowerCase()} de ${p.candidate.fullName} para ${formatDateTime(d.scheduledAt)} (${p.job.title})`,
@@ -287,6 +290,7 @@ export async function rescheduleInterview(actor: Actor, id: string, raw: SlotInp
         mode: d.mode, meetingUrl: d.mode === "ONLINE" ? d.meetingUrl : null, location: d.location, notes: d.notes ?? old.notes, createdById: actor.id, rescheduledFromId: old.id,
       },
     });
+    await onInterviewRescheduled(tx, old.id, { id: next.id, candidateJobId: next.candidateJobId, scheduledAt: next.scheduledAt, mode: next.mode });
     await audit(tx, {
       actorId: actor.id, action: "interview.reschedule", entityType: "Interview", entityId: next.id, storeId: d.storeId, ipAddress: ip,
       summary: `Reagendou a entrevista de ${old.candidateJob.candidate.fullName}: ${formatDateTime(old.scheduledAt)} → ${formatDateTime(d.scheduledAt)}`,
@@ -305,6 +309,7 @@ export async function cancelInterview(actor: Actor, id: string, reason: string, 
   if (text.length < 3) throw new ValidationError({ reason: ["Informe o motivo do cancelamento."] });
   await db.$transaction(async (tx) => {
     await tx.interview.update({ where: { id }, data: { status: "CANCELED", canceledReason: text.slice(0, 500) } });
+    await onInterviewCanceled(tx, { id, candidateJobId: i.candidateJobId });
     await audit(tx, {
       actorId: actor.id, action: "interview.cancel", entityType: "Interview", entityId: id, storeId: i.storeId, ipAddress: ip,
       summary: `Cancelou a entrevista de ${i.candidateJob.candidate.fullName} (${formatDateTime(i.scheduledAt)}): ${text.slice(0, 120)}`,

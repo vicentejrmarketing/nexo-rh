@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { ArrowClockwise, Check, Checks, Clock, File, Image as ImageIcon, Microphone, PaperPlaneRight, Warning, VideoCamera } from "@phosphor-icons/react";
+import { ArrowClockwise, Check, Checks, Clock, File, Image as ImageIcon, Microphone, PaperPlaneRight, Warning, VideoCamera, WhatsappLogo } from "@phosphor-icons/react";
 import { Alert, Button, Field, Input, Select, Textarea, cn } from "@/components/ui";
 import { errorText } from "@/lib/form";
 import { retryAction, sendTemplateAction, sendTextAction } from "@/app/(app)/mensagens/actions";
+import { sendManualAction } from "@/app/(app)/mensagens/enviar/actions";
+import { openWhatsApp } from "./queue";
 
 export type ThreadMessage = {
   id: string; direction: "INBOUND" | "OUTBOUND"; body: string | null; status: string; mediaType: string | null; hasMedia: boolean; errorMessage: string | null;
-  createdAt: string; sender: string | null; template: string | null; retrying: boolean;
+  createdAt: string; sender: string | null; template: string | null; retrying: boolean; manual: boolean;
 };
 export type TemplateOpt = { id: string; name: string; purpose: string; approved: boolean; metaBody: string; vars: { key: string; label: string }[] };
 
@@ -47,9 +49,10 @@ function Bubble({ m }: { m: ThreadMessage }) {
         )}
         {m.body && <p className="text-[14px] leading-snug break-words whitespace-pre-wrap">{m.body}</p>}
         <p className="mt-1 flex items-center justify-end gap-1 text-[11px] text-ink/50">
+          {out && m.manual && <span className="mr-1" title="Aberta no WhatsApp da empresa pelo recrutador">WhatsApp da empresa ·</span>}
           {out && m.sender && <span className="mr-1">{m.sender} ·</span>}
           {hm.format(new Date(m.createdAt))}
-          {out && <StatusIcon m={m} />}
+          {out && !m.manual && <StatusIcon m={m} />}
         </p>
         {out && (m.status === "FAILED" || m.retrying) && (
           <div className="mt-1.5 border-t border-black/10 pt-1.5 text-[12px]">
@@ -95,9 +98,12 @@ export function Composer({
   conversationId: string; windowOpen: boolean; windowEndsAt: string | null; templates: TemplateOpt[]; context: Record<string, string>;
   optedOut: boolean; connected: boolean; canSend: boolean; initialTemplate?: string;
 }) {
-  const [tab, setTab] = useState<"texto" | "modelo">(windowOpen && !initialTemplate ? "texto" : "modelo");
+  // Sem a API conectada, a central funciona em "1 clique": o texto abre no WhatsApp da empresa.
+  const manual = !connected;
+  const open = manual || windowOpen;
+  const [tab, setTab] = useState<"texto" | "modelo">(open && !initialTemplate ? "texto" : "modelo");
   const [text, setText] = useState("");
-  const usable = useMemo(() => templates.filter((t) => windowOpen || t.approved), [templates, windowOpen]);
+  const usable = useMemo(() => templates.filter((t) => open || t.approved), [templates, open]);
   const [tplId, setTplId] = useState(() => usable.find((t) => t.id === initialTemplate || t.purpose === initialTemplate)?.id ?? usable[0]?.id ?? "");
   const tpl = usable.find((t) => t.id === tplId);
   const [vals, setVals] = useState<Record<string, string>>(context);
@@ -105,13 +111,20 @@ export function Composer({
   const [error, setError] = useState<string | null>(null);
 
   if (!canSend) return <p className="border-t border-line bg-white px-4 py-3 text-[13px] text-muted">Seu perfil pode ver as conversas, mas não enviar mensagens.</p>;
-  if (!connected) return <p className="border-t border-line bg-white px-4 py-3 text-[13px] text-muted">O WhatsApp não está conectado. Um administrador precisa configurar em Configurações → Integração WhatsApp.</p>;
   if (optedOut) return <p className="border-t border-line bg-warning-soft px-4 py-3 text-[13px] text-warning">O candidato pediu para não receber mensagens. Só registre a volta da autorização se ele pedir.</p>;
 
   const preview = tpl ? tpl.metaBody.replace(/\{\{(\d+)\}\}/g, (_, n: string) => vals[tpl.vars[Number(n) - 1]?.key] || `[${tpl.vars[Number(n) - 1]?.label ?? n}]`) : "";
   const send = () =>
     start(async () => {
       setError(null);
+      if (manual) {
+        const body = tab === "texto" ? text : preview;
+        if (tab === "modelo" && /\[[^\]]+\]/.test(preview)) return setError("Preencha todas as informações do modelo.");
+        const r = await openWhatsApp(() => sendManualAction(conversationId, body));
+        if (r.ok) setText("");
+        else setError(errorText(r as never));
+        return;
+      }
       const r = tab === "texto" ? await sendTextAction(conversationId, text) : await sendTemplateAction(conversationId, tplId, vals);
       if (r.ok) setText("");
       else setError(errorText(r));
@@ -125,8 +138,8 @@ export function Composer({
             {t === "texto" ? "Mensagem" : "Modelo"}
           </button>
         ))}
-        <span className={cn("ml-auto text-[11.5px]", windowOpen ? "text-success" : "text-muted")}>
-          {windowOpen ? `Janela de 24 h aberta até ${windowEndsAt ? hm.format(new Date(windowEndsAt)) : ""}` : "Janela de 24 h fechada: só modelos aprovados"}
+        <span className={cn("ml-auto text-[11.5px]", manual || windowOpen ? "text-success" : "text-muted")}>
+          {manual ? "Abre no WhatsApp da empresa com o texto pronto" : windowOpen ? `Janela de 24 h aberta até ${windowEndsAt ? hm.format(new Date(windowEndsAt)) : ""}` : "Janela de 24 h fechada: só modelos aprovados"}
         </span>
       </div>
       {error && <div className="px-3 pt-2"><Alert>{error}</Alert></div>}
@@ -135,21 +148,21 @@ export function Composer({
           <Textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && windowOpen && text.trim()) { e.preventDefault(); send(); } }}
-            disabled={!windowOpen || pending}
-            placeholder={windowOpen ? "Escreva uma mensagem (Enter envia, Shift+Enter quebra linha)" : "O candidato não escreveu nas últimas 24 h. Use a aba Modelo."}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && open && text.trim() && !manual) { e.preventDefault(); send(); } }}
+            disabled={!open || pending}
+            placeholder={manual ? "Escreva a mensagem e clique para abrir no WhatsApp" : windowOpen ? "Escreva uma mensagem (Enter envia, Shift+Enter quebra linha)" : "O candidato não escreveu nas últimas 24 h. Use a aba Modelo."}
             className="max-h-40 min-h-11 flex-1 resize-none"
             maxLength={4096}
             aria-label="Mensagem"
           />
-          <Button type="button" onClick={send} disabled={!windowOpen || !text.trim() || pending} aria-label="Enviar"><PaperPlaneRight size={18} weight="fill" /></Button>
+          <Button type="button" onClick={send} disabled={!open || !text.trim() || pending} aria-label={manual ? "Abrir no WhatsApp" : "Enviar"}>{manual ? <><WhatsappLogo size={18} weight="fill" /> Abrir no WhatsApp</> : <PaperPlaneRight size={18} weight="fill" />}</Button>
         </div>
       ) : usable.length === 0 ? (
-        <p className="p-3 text-[13px] text-muted">{windowOpen ? "Nenhum modelo ativo." : "Nenhum modelo aprovado pela Meta ainda. Envie para aprovação em Configurações → Modelos de mensagens."}</p>
+        <p className="p-3 text-[13px] text-muted">{open ? "Nenhum modelo ativo." : "Nenhum modelo aprovado pela Meta ainda. Envie para aprovação em Configurações → Modelos de mensagens."}</p>
       ) : (
         <div className="flex flex-col gap-3 p-3">
           <Select value={tplId} onChange={(e) => setTplId(e.target.value)} aria-label="Modelo">
-            {usable.map((t) => <option key={t.id} value={t.id}>{t.name}{t.approved ? "" : " (só dentro da janela)"}</option>)}
+            {usable.map((t) => <option key={t.id} value={t.id}>{t.name}{t.approved || manual ? "" : " (só dentro da janela)"}</option>)}
           </Select>
           {tpl && tpl.vars.length > 0 && (
             <div className="grid gap-2 sm:grid-cols-2">
@@ -161,7 +174,7 @@ export function Composer({
             </div>
           )}
           {tpl && <p className="rounded-lg bg-[#fff3c4] px-3 py-2 text-[13.5px] whitespace-pre-line">{preview}</p>}
-          <div className="flex justify-end"><Button type="button" onClick={send} disabled={!tpl || pending}><PaperPlaneRight size={16} weight="fill" /> {pending ? "Enviando…" : "Enviar modelo"}</Button></div>
+          <div className="flex justify-end"><Button type="button" onClick={send} disabled={!tpl || pending}>{manual ? <WhatsappLogo size={16} weight="fill" /> : <PaperPlaneRight size={16} weight="fill" />} {pending ? "Enviando…" : manual ? "Abrir no WhatsApp" : "Enviar modelo"}</Button></div>
         </div>
       )}
     </div>

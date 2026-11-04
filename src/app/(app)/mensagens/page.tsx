@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { ArrowLeft, CalendarPlus, ChatsCircle, MagnifyingGlass, ShieldWarning, UserCircle, WhatsappLogo } from "@phosphor-icons/react/ssr";
-import { Alert, Badge, PageHeader, PageSkeleton, buttonClass, cn } from "@/components/ui";
+import { Badge, PageHeader, PageSkeleton, buttonClass, cn } from "@/components/ui";
 import { NoPermission } from "@/components/layout/states";
 import { StagePill } from "@/components/recruitment/stage-pill";
 import { InboxLive } from "@/components/messages/live";
@@ -15,6 +15,8 @@ import { db } from "@/server/db/client";
 import { CONVERSATION_STATUS_LABEL, getConversation, listConversations, templateContext, WINDOW_MS } from "@/server/modules/messages/service";
 import { isKnownVar, listTemplates, VARIABLES } from "@/server/modules/messages/templates";
 import { integrationStatus } from "@/server/whatsapp/settings";
+import { pendingCount } from "@/server/modules/automations/service";
+import { MessagesTabs } from "@/components/messages/tabs";
 import { formatDateTime } from "@/lib/format";
 import { formatPhoneBR } from "@/lib/phone";
 import { dayKey, startOfDaySP, timeKey } from "@/lib/period";
@@ -41,10 +43,11 @@ async function Content({ searchParams }: { searchParams: PageProps<"/mensagens">
   const sp = await searchParams;
   const selected = one(sp.c) ?? null;
   const f = { q: one(sp.q), filter: (one(sp.filtro) ?? "") as "" | "nao-lidas" | "minhas" | "sem-responsavel", assignedToId: one(sp.responsavel), status: one(sp.situacao) };
-  const [list, integration, users] = await Promise.all([
+  const [list, integration, users, pending] = await Promise.all([
     listConversations(actor, f),
     integrationStatus(),
     db.user.findMany({ where: { status: "ACTIVE", role: { permissions: { some: { permission: { key: "messages.send" } } } } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    pendingCount(actor),
   ]);
   const data = selected ? await getConversation(actor, selected).catch(() => null) : null;
   const connected = integration.status === "CONNECTED";
@@ -80,13 +83,9 @@ async function Content({ searchParams }: { searchParams: PageProps<"/mensagens">
     <>
       <InboxLive conversationId={data?.conversation.id ?? null} />
       <PageHeader title="Mensagens" description="Central de atendimento do WhatsApp oficial." />
+      <MessagesTabs active="conversas" pending={pending} />
       {!connected && (
-        <div className="mb-4">
-          <Alert tone="warning" title="WhatsApp não conectado">
-            As conversas já registradas aparecem aqui, mas enviar e receber depende da conexão com a Meta.{" "}
-            {can(actor, "integrations.manage") ? <Link href="/configuracoes/whatsapp" className="font-semibold underline">Configurar agora</Link> : "Peça a um administrador para configurar."}
-          </Alert>
-        </div>
+        <p className="mb-3 text-[12.5px] text-muted">Modo 1 clique: as mensagens abrem no WhatsApp da empresa com o texto pronto e ficam registradas aqui. As respostas dos candidatos chegam no seu WhatsApp.</p>
       )}
       <div className="grid h-[calc(100vh-200px)] min-h-[560px] overflow-hidden rounded-[var(--radius-card)] border border-black/[0.06] bg-white shadow-[0_2px_14px_rgba(17,18,22,0.05)] lg:grid-cols-[320px_1fr] xl:grid-cols-[320px_1fr_300px]">
         {/* Lista */}
@@ -162,7 +161,7 @@ async function Content({ searchParams }: { searchParams: PageProps<"/mensagens">
                   messages={data.conversation.messages.map((m) => ({
                     id: m.id, direction: m.direction, body: m.body, status: m.status, mediaType: m.mediaType, hasMedia: !!m.mediaId, errorMessage: m.errorMessage,
                     createdAt: m.createdAt.toISOString(), sender: m.sentBy?.name.split(" ")[0] ?? (m.direction === "OUTBOUND" ? "Sistema" : null),
-                    template: m.template?.name ?? null, retrying: m.status === "QUEUED" && m.attempts > 0,
+                    template: m.template?.name ?? null, retrying: m.status === "QUEUED" && m.attempts > 0, manual: m.channel === "MANUAL_LINK",
                   }))}
                 />
               </div>

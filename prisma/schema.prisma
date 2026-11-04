@@ -131,6 +131,19 @@ enum TemplateApproval {
   REJECTED
 }
 
+enum DispatchStatus {
+  PENDING // para enviar
+  BLOCKED // dado faltando (ex.: link da entrevista)
+  SENT
+  SKIPPED // pulada pelo recrutador ou expirada
+  CANCELED // evento desfeito (ex.: entrevista reagendada)
+}
+
+enum MessageChannel {
+  API // WhatsApp Cloud API (envio automático)
+  MANUAL_LINK // aberto no WhatsApp do recrutador (1 clique)
+}
+
 enum IntegrationStatus {
   NOT_CONNECTED
   CONNECTED
@@ -224,6 +237,8 @@ model User {
   activityLogs        ActivityLog[]
   notifications       Notification[]
   privacyHandled      PrivacyRequest[]    @relation("PrivacyHandledBy")
+  automationsUpdated  AutomationRule[]    @relation("AutomationUpdatedBy")
+  dispatchesSent      MessageDispatch[]   @relation("DispatchSentBy")
   managedStores       Store[]               @relation("StoreManager")
   recruiterJobs       Job[]                 @relation("JobRecruiter")
   createdJobs         Job[]                 @relation("JobCreatedBy")
@@ -606,6 +621,8 @@ model CandidateJob {
   candidate  Candidate        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   resume     Attachment?      @relation("ApplicationResume", fields: [resumeId], references: [id], onDelete: SetNull)
   consents   CandidateConsent[]
+  messages   Message[]
+  dispatches MessageDispatch[]
   job        Job              @relation(fields: [jobId], references: [id], onDelete: Cascade)
   stage      RecruitmentStage @relation(fields: [stageId], references: [id])
   recruiter  User?            @relation("ProcessRecruiter", fields: [recruiterId], references: [id], onDelete: SetNull)
@@ -671,6 +688,7 @@ model Interview {
   rescheduledFrom Interview?            @relation("Reschedule", fields: [rescheduledFromId], references: [id], onDelete: SetNull)
   rescheduledTo   Interview?            @relation("Reschedule")
   evaluations     InterviewEvaluation[]
+  dispatches      MessageDispatch[]
 
   @@index([scheduledAt, status])
   @@index([interviewerId, scheduledAt])
@@ -738,6 +756,9 @@ model Message {
   mediaType      String?
   mediaId        String? // id da mídia na Meta (baixada sob demanda, com permissão)
   mediaMime      String?
+  channel        MessageChannel   @default(API)
+  candidateJobId String? // candidatura a que a mensagem se refere
+  stageKey       String? // etapa do funil no momento do envio
   status         MessageStatus
   errorCode      String?
   errorMessage   String?
@@ -753,12 +774,69 @@ model Message {
   conversation Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   template     MessageTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   sentBy       User?            @relation(fields: [sentById], references: [id], onDelete: SetNull)
+  candidateJob CandidateJob?    @relation(fields: [candidateJobId], references: [id], onDelete: SetNull)
+  dispatch     MessageDispatch?
 
   @@index([conversationId, createdAt])
   @@index([status, nextAttemptAt])
   @@index([sentById])
   @@index([templateId])
+  @@index([candidateJobId])
   @@map("messages")
+}
+
+/// Regra de mensagem automática: qual evento gera qual mensagem.
+model AutomationRule {
+  id            String           @id @default(cuid())
+  event         String           @unique // stage:<etapa>, interview:online, interview:in_person, interview:rescheduled, interview:canceled, reminder:<minutos>
+  name          String
+  enabled       Boolean          @default(true)
+  templateId    String?
+  offsetMinutes Int? // lembretes: quanto antes da entrevista (ex.: 1440 = 24 h)
+  sort          Int              @default(0)
+  updatedById   String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  template   MessageTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  updatedBy  User?             @relation("AutomationUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  dispatches MessageDispatch[]
+
+  @@index([templateId])
+  @@index([updatedById])
+  @@map("automation_rules")
+}
+
+/// Fila de mensagens geradas pelas automações. A chave única impede duplicidade por candidatura e evento.
+model MessageDispatch {
+  id             String         @id @default(cuid())
+  ruleId         String
+  candidateJobId String
+  interviewId    String?
+  dedupeKey      String         @unique
+  stageKey       String?
+  status         DispatchStatus @default(PENDING)
+  dueAt          DateTime       @default(now())
+  reason         String? // por que está bloqueada, pulada ou cancelada
+  body           String? // texto enviado (congelado no momento do envio)
+  messageId      String?        @unique
+  sentById       String?
+  sentAt         DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  rule         AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  candidateJob CandidateJob   @relation(fields: [candidateJobId], references: [id], onDelete: Cascade)
+  interview    Interview?     @relation(fields: [interviewId], references: [id], onDelete: SetNull)
+  message      Message?       @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  sentBy       User?          @relation("DispatchSentBy", fields: [sentById], references: [id], onDelete: SetNull)
+
+  @@index([status, dueAt])
+  @@index([candidateJobId])
+  @@index([interviewId])
+  @@index([ruleId])
+  @@index([sentById])
+  @@map("message_dispatches")
 }
 
 model MessageTemplate {
@@ -779,8 +857,9 @@ model MessageTemplate {
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
-  updatedBy User?     @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy User?            @relation(fields: [updatedById], references: [id], onDelete: SetNull)
   messages  Message[]
+  rules     AutomationRule[]
 
   @@index([updatedById])
   @@map("message_templates")

@@ -1,4 +1,5 @@
 import "server-only";
+import { ensureDefaultRules, onStageEntered } from "@/server/modules/automations/service";
 import type { Prisma, ProcessStatus, StageKind } from "@/generated/prisma/client";
 import { db } from "@/server/db/client";
 import { audit } from "@/server/audit/log";
@@ -121,6 +122,7 @@ export async function moveProcess(actor: Actor, processId: string, toStageKey: s
 
   const status = statusForKind(to.kind);
   const now = new Date();
+  await ensureDefaultRules();
   const assume = ROLES[actor.roleKey].ownRecordsOnly && p.recruiterId === null;
   return db.$transaction(async (tx) => {
     const updated = await tx.candidateJob.update({
@@ -133,6 +135,8 @@ export async function moveProcess(actor: Actor, processId: string, toStageKey: s
       },
     });
     await tx.stageHistory.create({ data: { candidateJobId: p.id, fromStageId: p.stageId, toStageId: to.id, movedById: actor.id, note: text, movedAt: now } });
+    // Histórico gravado primeiro; a mensagem da nova etapa entra na fila na mesma transação.
+    await onStageEntered(tx, p.id, to.key);
     await tx.candidate.update({ where: { id: p.candidateId }, data: { updatedAt: now } });
     await audit(tx, {
       actorId: actor.id, action: "application.move", entityType: "CandidateJob", entityId: p.id, storeId: p.job.storeId, ipAddress: ip,

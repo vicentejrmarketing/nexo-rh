@@ -84,7 +84,7 @@ export async function getConversation(actor: Actor, id: string) {
       messages: {
         orderBy: { createdAt: "desc" }, take: 200,
         select: {
-          id: true, direction: true, body: true, status: true, mediaType: true, mediaId: true, errorMessage: true, attempts: true, nextAttemptAt: true,
+          id: true, direction: true, channel: true, body: true, status: true, mediaType: true, mediaId: true, errorMessage: true, attempts: true, nextAttemptAt: true,
           createdAt: true, sentAt: true, deliveredAt: true, readAt: true, failedAt: true, sentBy: { select: { name: true } }, template: { select: { name: true } },
         },
       },
@@ -329,4 +329,26 @@ export async function unreadTotal(actor: Actor) {
   if (!actor.permissions.has("messages.view")) return 0;
   const r = await db.conversation.aggregate({ where: visibleConversationsWhere(actor), _sum: { unreadCount: true } });
   return r._sum.unreadCount ?? 0;
+}
+
+/**
+ * Modo sem API (custo zero): registra a mensagem escrita na central e devolve o link do WhatsApp
+ * com o texto pronto. Quem envia de fato é o recrutador, no WhatsApp da empresa.
+ */
+export async function sendManualText(actor: Actor, conversationId: string, body: string) {
+  const c = await assertCanMessage(actor, conversationId);
+  const text = body.trim();
+  if (!text) throw new ValidationError({ body: ["Escreva a mensagem."] });
+  if (text.length > 4096) throw new ValidationError({ body: ["Máximo de 4.096 caracteres."] });
+  const now = new Date();
+  const proc = c.candidate
+    ? await db.candidateJob.findFirst({ where: { candidateId: c.candidate.id }, orderBy: [{ status: "asc" }, { lastMovedAt: "desc" }], select: { id: true, stage: { select: { key: true } } } })
+    : null;
+  await db.$transaction(async (tx) => {
+    await tx.message.create({
+      data: { conversationId: c.id, direction: "OUTBOUND", channel: "MANUAL_LINK", status: "SENT", body: text, sentById: actor.id, sentAt: now, attempts: 1, candidateJobId: proc?.id, stageKey: proc?.stage.key },
+    });
+    await tx.conversation.update({ where: { id: c.id }, data: { lastMessageAt: now, lastMessageText: text.slice(0, 200), status: "WAITING_CANDIDATE", assignedToId: c.assignedToId ?? actor.id } });
+  });
+  return { url: `https://wa.me/${c.waContactE164.replace(/\D/g, "")}?text=${encodeURIComponent(text)}` };
 }

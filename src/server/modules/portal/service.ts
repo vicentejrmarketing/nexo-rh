@@ -1,4 +1,5 @@
 import "server-only";
+import { ensureDefaultRules, onStageEntered } from "@/server/modules/automations/service";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type { ContractType, Prisma } from "@/generated/prisma/client";
@@ -313,6 +314,7 @@ export async function submitApplication(slug: string, raw: ApplyInput, resume: R
   if (!storageReady()) throw new AppError("INTERNAL", "As inscrições estão temporariamente indisponíveis. Tente novamente mais tarde.");
 
   const settings = await getCompanySettings();
+  await ensureDefaultRules();
   const retentionUntil = addDays(new Date(), settings.retentionDays);
   const policyVersion = settings.privacyVersion ?? "sem-versao";
 
@@ -358,12 +360,15 @@ export async function submitApplication(slug: string, raw: ApplyInput, resume: R
           });
       if (!prev) {
         await tx.stageHistory.create({ data: { candidateJobId: application.id, toStageId: applied.id, note: "Inscrição pelo site" } });
+        // Depois de registrar a etapa: entra na fila a mensagem de "inscrição recebida".
+        await onStageEntered(tx, application.id, "applied");
       }
 
       // 7) Consentimento com a versão da política aceita
       await tx.candidateConsent.createMany({
         data: [
           { candidateId: candidate.id, candidateJobId: application.id, purpose: "RECRUITMENT_PROCESS" as const, policyVersion, source: "ONLINE_FORM" as const, ipAddress: meta.ip, userAgent: meta.userAgent },
+          { candidateId: candidate.id, candidateJobId: application.id, purpose: "WHATSAPP_CONTACT" as const, policyVersion, source: "ONLINE_FORM" as const, ipAddress: meta.ip, userAgent: meta.userAgent },
           ...(d.talentPool
             ? [{ candidateId: candidate.id, candidateJobId: application.id, purpose: "TALENT_POOL" as const, policyVersion, source: "ONLINE_FORM" as const, ipAddress: meta.ip, userAgent: meta.userAgent }]
             : []),

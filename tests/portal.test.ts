@@ -107,7 +107,7 @@ describe("inscrição pelo site", () => {
     expect(app.applicantMessage).toBe("Disponível à tarde");
     expect(app.resume?.fileName).toBe("curriculo.pdf");
     expect(app.recruiterId).toBe(recruiter.id);
-    expect(app.consents.map((c) => c.purpose).sort()).toEqual(["RECRUITMENT_PROCESS", "TALENT_POOL"]);
+    expect(app.consents.map((c) => c.purpose).sort()).toEqual(["RECRUITMENT_PROCESS", "TALENT_POOL", "WHATSAPP_CONTACT"]);
     expect(app.candidate.desiredStoreId).toBe(store.id);
     expect(app.candidate.inTalentPool).toBe(true);
     expect(await db.stageHistory.count({ where: { candidateJobId: app.id } })).toBe(1);

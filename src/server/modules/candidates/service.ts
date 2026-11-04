@@ -1,4 +1,5 @@
 import "server-only";
+import { ensureDefaultRules, onStageEntered } from "@/server/modules/automations/service";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { CandidateSource, Prisma } from "@/generated/prisma/client";
@@ -216,6 +217,7 @@ export async function createCandidate(actor: Actor, raw: CandidateInput, opts: {
   const job = opts.jobId ? await db.job.findFirst({ where: { AND: [{ id: opts.jobId }, visibleJobsWhere(actor)] } }) : null;
   if (opts.jobId && !job) throw new ValidationError({ jobId: ["Vaga não encontrada."] });
   const settings = await getCompanySettings();
+  if (job) await ensureDefaultRules();
 
   return withUploadedResume(opts.resume, (resume) => db.$transaction(async (tx) => {
     const c = await tx.candidate.create({
@@ -226,7 +228,7 @@ export async function createCandidate(actor: Actor, raw: CandidateInput, opts: {
     });
     if (consent) {
       await tx.candidateConsent.createMany({
-        data: (["RECRUITMENT_PROCESS", "TALENT_POOL"] as const).map((purpose) => ({
+        data: (["RECRUITMENT_PROCESS", "TALENT_POOL", "WHATSAPP_CONTACT"] as const).map((purpose) => ({
           candidateId: c.id, purpose, policyVersion: settings.privacyVersion ?? "sem-versao", source: "MANUAL" as const, ipAddress: opts.ip ?? null,
         })),
       });
@@ -416,6 +418,7 @@ async function linkInTx(tx: Tx, actor: Actor, candidateId: string, candidateName
   const recruiterId = job.recruiterId ?? (ROLES[actor.roleKey].ownRecordsOnly ? actor.id : null);
   const p = await tx.candidateJob.create({ data: { candidateId, jobId: job.id, stageId: applied.id, recruiterId, source: "MANUAL" } });
   await tx.stageHistory.create({ data: { candidateJobId: p.id, toStageId: applied.id, movedById: actor.id, note: "Vinculado à vaga" } });
+  await onStageEntered(tx, p.id, "applied");
   await audit(tx, {
     actorId: actor.id, action: "application.create", entityType: "CandidateJob", entityId: p.id, storeId: job.storeId, ipAddress: ip,
     summary: `Vinculou ${candidateName} à vaga ${job.title}`,
@@ -434,6 +437,7 @@ export async function linkToJob(actor: Actor, candidateId: string, jobId: string
     throw new ForbiddenError("Esta vaga está sob responsabilidade de outro recrutador.");
   }
   const retentionUntil = await retentionDate();
+  await ensureDefaultRules();
   return db.$transaction(async (tx) => {
     const p = await linkInTx(tx, actor, c.id, c.fullName, job, ip);
     await tx.candidate.update({ where: { id: c.id }, data: { retentionUntil } });

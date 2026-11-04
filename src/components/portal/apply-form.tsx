@@ -64,7 +64,7 @@ export function ApplyForm({ slug, token, ufs }: { slug: string; token: string; u
           <label className="flex items-start gap-3 text-[14px]">
             <input type="checkbox" name="consent" defaultChecked={state.values?.consent === "on"} className="mt-0.5 h-5 w-5 shrink-0 accent-[#F5B900]" />
             <span>
-              Autorizo o uso dos meus dados para este processo seletivo, conforme a{" "}
+              Autorizo o uso dos meus dados para este processo seletivo e a receber mensagens sobre ele pelo WhatsApp, conforme a{" "}
               <Link href="/trabalhe-conosco/privacidade" target="_blank" className="font-semibold underline decoration-brand decoration-2 underline-offset-4">política de privacidade</Link>. *
             </span>
           </label>

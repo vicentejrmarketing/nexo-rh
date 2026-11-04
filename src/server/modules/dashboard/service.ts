@@ -1,6 +1,7 @@
 import "server-only";
 import { ensureAlerts } from "@/server/modules/alerts/service";
 import { unreadTotal } from "@/server/modules/messages/service";
+import { pendingCount } from "@/server/modules/automations/service";
 import { cache } from "react";
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/server/db/client";
@@ -227,12 +228,14 @@ export async function getFootprint(actor: Actor) {
 /** Contadores do menu e do sino (uma consulta por requisição, mesmo usados em dois lugares). */
 export const getShellCounters = cache(async (actor: Actor) => {
   await ensureAlerts(actor).catch((e) => console.error("[alertas]", e));
-  const [unreadMessages, notifications] = await Promise.all([
+  const [unreadMessages, toSend, notifications] = await Promise.all([
     unreadTotal(actor),
+    pendingCount(actor),
     db.notification.findMany({ where: { userId: actor.id }, orderBy: { createdAt: "desc" }, take: 8, select: { id: true, title: true, body: true, link: true, readAt: true, createdAt: true } }),
   ]);
   return {
-    unreadMessages,
+    // O número no menu soma conversas não lidas e mensagens automáticas prontas para enviar.
+    unreadMessages: unreadMessages + toSend,
     notifications,
     unreadNotifications: notifications.filter((n) => !n.readAt).length,
   };

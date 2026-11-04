@@ -19,6 +19,9 @@ import { formatDate, formatDateTime } from "@/lib/format";
 import { formatMoneyBR } from "@/lib/form";
 import { digitsOnly, formatPhoneBR } from "@/lib/phone";
 import { anonymizeAction } from "../actions";
+import { optOutAction } from "@/app/(app)/mensagens/enviar/actions";
+import { candidateCommunication } from "@/server/modules/automations/service";
+import { db } from "@/server/db/client";
 import { OpenConversationButton } from "@/components/messages/open-button";
 import { LinkJob, NoteForm, OwnerControl, ResumeUpload, TagEditor, TalentPoolToggle } from "./profile-controls";
 
@@ -33,6 +36,7 @@ export default function CandidatePage({ params, searchParams }: PageProps<"/cand
 }
 
 const PURPOSE = { RECRUITMENT_PROCESS: "Processo seletivo", TALENT_POOL: "Banco de talentos", WHATSAPP_CONTACT: "Contato pelo WhatsApp" } as Record<string, string>;
+const MSG_STATUS: Record<string, string> = { QUEUED: "na fila", SENT: "enviada", DELIVERED: "entregue", READ: "lida", FAILED: "falhou", RECEIVED: "recebida" };
 const INTERVIEW_STATUS: Record<string, string> = { SCHEDULED: "Agendada", COMPLETED: "Realizada", NO_SHOW: "Não compareceu", CANCELED: "Cancelada", RESCHEDULED: "Remarcada" };
 
 async function Content({ params, searchParams }: { params: PageProps<"/candidatos/[id]">["params"]; searchParams: PageProps<"/candidatos/[id]">["searchParams"] }) {
@@ -51,6 +55,12 @@ async function Content({ params, searchParams }: { params: PageProps<"/candidato
   const resume = c.attachments.find((a) => a.kind === "RESUME");
   const wa = c.whatsappE164 ?? c.phoneE164;
   const selfOnly = ROLES[actor.roleKey].ownRecordsOnly;
+  const [comm, stages] = can(actor, "messages.view")
+    ? await Promise.all([candidateCommunication(actor, c.id), db.recruitmentStage.findMany({ select: { key: true, name: true } })])
+    : [{ messages: [], queue: [] }, []];
+  const stageNames = new Map(stages.map((s) => [s.key, s.name]));
+  const conv = c.conversations;
+  const now = new Date();
   const canSchedule = can(actor, "interviews.manage");
 
   return (
@@ -143,6 +153,47 @@ async function Content({ params, searchParams }: { params: PageProps<"/candidato
             )}
           </Panel>
 
+          {can(actor, "messages.view") && (
+            <Panel title="Comunicação" icon={ChatText} action={conv[0] ? <Link href={`/mensagens?c=${conv[0].id}`} className="text-[13px] font-semibold hover:underline">Abrir conversa</Link> : undefined}>
+              {comm.queue.length > 0 && (
+                <ul className="mb-4 flex flex-col gap-1.5">
+                  {comm.queue.map((q) => (
+                    <li key={q.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-brand-soft px-3 py-2 text-[13px]">
+                      <span><strong>{q.rule.name}</strong> · {q.candidateJob.job.title}{q.status === "BLOCKED" && q.reason ? ` · ${q.reason}` : ""}</span>
+                      <span className="text-[12px]">{q.status === "BLOCKED" ? "Falta informação" : q.dueAt > now ? `Agendada para ${formatDateTime(q.dueAt)}` : <Link href="/mensagens/enviar" className="font-semibold underline">Para enviar</Link>}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {comm.messages.length === 0 ? (
+                <p className="text-[13px] text-muted">Nenhuma mensagem registrada ainda.</p>
+              ) : (
+                <ul className="divide-y divide-line">
+                  {comm.messages.map((m) => (
+                    <li key={m.id} className="py-2.5">
+                      <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted">
+                        <Badge tone={m.direction === "INBOUND" ? "brand" : "neutral"}>{m.direction === "INBOUND" ? "Recebida" : "Enviada"}</Badge>
+                        {formatDateTime(m.createdAt)}
+                        {m.stageKey && <span>· {stageNames.get(m.stageKey) ?? m.stageKey}</span>}
+                        {m.candidateJob && <span>· {m.candidateJob.job.title}</span>}
+                        {m.direction === "OUTBOUND" && <span>· {m.channel === "MANUAL_LINK" ? `aberta no WhatsApp por ${m.sentBy?.name ?? "—"}` : MSG_STATUS[m.status] ?? m.status}</span>}
+                      </div>
+                      <p className="mt-1 text-[13.5px] whitespace-pre-line">{m.body ?? (m.mediaType ? `[${m.mediaType}]` : "")}</p>
+                      {m.status === "FAILED" && m.errorMessage && <p className="mt-0.5 text-[12px] text-danger">{m.errorMessage}</p>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="mt-3 border-t border-line pt-3">
+                {c.optedOutAt ? (
+                  <p className="text-[12.5px] text-warning">Pediu para não receber mensagens em {formatDate(c.optedOutAt)}. Nenhuma mensagem automática é gerada.</p>
+                ) : data.canEdit ? (
+                  <ConfirmAction label="Pediu para não receber mensagens" size="sm" variant="secondary" question="Registrar que o candidato pediu para não receber mensagens? As mensagens na fila são canceladas." confirmLabel="Registrar" action={optOutAction.bind(null, c.id)} />
+                ) : null}
+              </div>
+            </Panel>
+          )}
+
           <Panel title="Observações" icon={NotePencil}>
             {data.canEdit && <div className="mb-4"><NoteForm id={c.id} /></div>}
             {c.notes.length === 0 ? (
@@ -219,19 +270,6 @@ async function Content({ params, searchParams }: { params: PageProps<"/candidato
             </Panel>
           )}
 
-          <Panel title="Conversas" icon={ChatText}>
-            {c.conversations.length === 0 ? (
-              <p className="text-[13px] text-muted">Nenhuma conversa no WhatsApp ainda.{c.optedOutAt ? " O candidato pediu para não receber mensagens." : ""}</p>
-            ) : (
-              c.conversations.map((cv) => (
-                <p key={cv.id} className="text-[13px]">
-                  {can(actor, "messages.view") ? <Link href={`/mensagens?c=${cv.id}`} className="font-medium underline decoration-brand decoration-2 underline-offset-4">{cv._count.messages} mensagem(ns)</Link> : `${cv._count.messages} mensagem(ns)`}
-                  {cv.lastMessageAt ? ` · última em ${formatDateTime(cv.lastMessageAt)}` : ""}
-                </p>
-              ))
-            )}
-            {c.optedOutAt && c.conversations.length > 0 && <p className="mt-2 text-[12.5px] text-warning">Pediu para não receber mensagens em {formatDate(c.optedOutAt)}.</p>}
-          </Panel>
 
           <Panel title="LGPD" icon={ShieldCheck}>
             <ul className="flex flex-col gap-2 text-[13px]">

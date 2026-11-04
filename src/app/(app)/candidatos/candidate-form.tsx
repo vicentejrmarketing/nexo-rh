@@ -147,7 +147,7 @@ export function CandidateForm({
                 <FileInput id="resume" name="resume" accept="application/pdf,.pdf" disabled={!storageReady} />
               </Field>
               <div>
-                <Checkbox name="consent" defaultChecked={state.values?.consent === "on"} label="O candidato autorizou o uso dos dados para este processo e para o banco de talentos" hint="Exigido pela LGPD. Fica registrado com a versão atual da política de privacidade." />
+                <Checkbox name="consent" defaultChecked={state.values?.consent === "on"} label="O candidato autorizou o uso dos dados para este processo e o banco de talentos, e a receber mensagens sobre o processo pelo WhatsApp" hint="Exigido pela LGPD. Fica registrado com a versão atual da política de privacidade." />
                 {e.consent && <p className="mt-1.5 text-[12.5px] text-danger">{e.consent[0]}</p>}
               </div>
             </div>
