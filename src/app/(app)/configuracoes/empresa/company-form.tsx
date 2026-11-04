@@ -46,7 +46,7 @@ export function CompanyForm({ settings, template }: { settings: Settings; templa
             <Field label="Prazo de retenção do banco de talentos (meses)" htmlFor="retentionMonths" errors={e.retentionMonths} hint="Sem atividade nesse prazo, o cadastro é anonimizado. Sugestão: 24.">
               <Input id="retentionMonths" name="retentionMonths" type="number" min={6} max={60} defaultValue={pick(state, "retentionMonths", Math.round(settings.retentionDays / 30))} invalid={!!e.retentionMonths} />
             </Field>
-            <Field label="Alerta de candidato parado (dias)" htmlFor="stalledDays" errors={e.stalledDays} hint="Padrão para as etapas do funil (Etapa 3).">
+            <Field label="Alerta de candidato parado (dias)" htmlFor="stalledDays" errors={e.stalledDays} hint="Padrão para as etapas do funil; cada etapa pode ter o seu prazo.">
               <Input id="stalledDays" name="stalledDays" type="number" min={1} max={60} defaultValue={pick(state, "stalledDays", settings.stalledDays)} invalid={!!e.stalledDays} />
             </Field>
           </div>
@@ -83,7 +83,7 @@ export function CompanyForm({ settings, template }: { settings: Settings; templa
           <div className="p-5">
             {!settings.privacyPolicy && (
               <div className="mb-3">
-                <Alert tone="warning">O modelo é um ponto de partida e precisa ser revisado pelo jurídico antes do portal de vagas (Etapa 5) entrar no ar.</Alert>
+                <Alert tone="warning">O modelo é um ponto de partida e precisa ser revisado pelo jurídico: é este texto que aparece no site de vagas.</Alert>
               </div>
             )}
             <Field label="Texto da política" htmlFor="privacyPolicy" errors={e.privacyPolicy}>

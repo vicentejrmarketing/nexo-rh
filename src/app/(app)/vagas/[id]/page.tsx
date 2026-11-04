@@ -159,7 +159,7 @@ async function Content({ params, searchParams }: { params: PageProps<"/vagas/[id
                 </li>
               ))}
             </ul>
-            <p className="mt-4 text-[12px] text-muted">Mover candidatos entre etapas chega com o Funil, na Etapa 3.</p>
+            <Link href={`/funil?vaga=${job.id}`} className={`${buttonClass("secondary", "sm")} mt-4`}>Abrir no funil</Link>
           </Panel>
           {data.canEdit && ["DRAFT", "OPEN", "PAUSED"].includes(job.status) && (
             <Panel title="Cancelar vaga" icon={Trash}>

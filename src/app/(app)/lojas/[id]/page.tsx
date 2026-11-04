@@ -115,12 +115,12 @@ async function Content({ params, searchParams }: { params: PageProps<"/lojas/[id
 
         <Panel title="Próximas entrevistas" icon={CalendarDots}>
           {data.interviews.length === 0 ? (
-            <p className="py-6 text-center text-[13px] text-muted">Nenhuma entrevista agendada. O calendário chega na Etapa 3.</p>
+            <p className="py-6 text-center text-[13px] text-muted">Nenhuma entrevista agendada.</p>
           ) : (
             <ul className="divide-y divide-line">
               {data.interviews.map((i) => (
                 <li key={i.id} className="py-2.5 text-[14px]">
-                  <span className="font-medium">{i.candidateJob.candidate.fullName}</span> · {i.candidateJob.job.title}
+                  <Link href={`/entrevistas/${i.id}`} className="hover:underline"><span className="font-medium">{i.candidateJob.candidate.fullName}</span> · {i.candidateJob.job.title}</Link>
                   <p className="text-[12px] text-muted">{formatDateTime(i.scheduledAt)} · {i.mode === "ONLINE" ? "Online" : "Presencial"}</p>
                 </li>
               ))}

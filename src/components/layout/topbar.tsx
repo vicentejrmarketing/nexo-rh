@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Bell, Briefcase, CaretDown, GearSix, Key, Plus, SignOut, UserPlus } from "@phosphor-icons/react";
 import { cn } from "@/components/ui";
 import { logoutAction } from "@/app/(auth)/actions";
+import { markNotificationsReadAction } from "@/app/(app)/notification-actions";
 import { initials, useDismiss } from "./sidebar";
 
 type Notification = { id: string; title: string; body: string | null; link: string | null; readAt: string | null; createdAt: string };
@@ -17,14 +18,24 @@ function timeAgo(iso: string) {
   return `há ${Math.floor(s / 86400)} d`;
 }
 
-function NotificationsButton({ items, unread }: { items: Notification[]; unread: number }) {
+function NotificationsButton({ items, unread: initialUnread }: { items: Notification[]; unread: number }) {
   const [open, setOpen] = useState(false);
+  const [seenIds, setSeenIds] = useState<Set<string>>(() => new Set());
+  const fresh = items.filter((n) => !n.readAt && !seenIds.has(n.id));
+  const unread = Math.max(0, initialUnread - (items.filter((n) => !n.readAt).length - fresh.length));
   const ref = useDismiss<HTMLDivElement>(open, () => setOpen(false));
   return (
     <div ref={ref} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setOpen((v) => !v);
+          // Abrir a lista conta como lido (as não lidas continuam destacadas até fechar).
+          if (!open && fresh.length) {
+            setSeenIds(new Set([...seenIds, ...fresh.map((n) => n.id)]));
+            void markNotificationsReadAction();
+          }
+        }}
         aria-label={unread ? `Notificações: ${unread} não lida(s)` : "Notificações"}
         aria-expanded={open}
         className="relative flex h-12 w-12 items-center justify-center rounded-full bg-white text-ink shadow-[0_2px_10px_rgba(17,18,22,0.06)] hover:bg-surface"

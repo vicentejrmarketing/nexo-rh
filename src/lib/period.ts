@@ -120,3 +120,17 @@ export function greetingSP(now = new Date()): string {
   const h = partsSP(now).hour;
   return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
 }
+
+/** "AAAA-MM-DD" + "HH:MM" no horário de São Paulo → Date (UTC); null se inválido. */
+export function parseDateTimeSP(date: string | undefined, time: string | undefined): Date | null {
+  const day = parseDateSP(date);
+  if (!day || !time || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return null;
+  const [h, m] = time.split(":").map(Number);
+  return new Date(day.getTime() + (h * 60 + m) * 60000);
+}
+
+/** "HH:MM" no horário de São Paulo. */
+export function timeKey(d: Date): string {
+  const p = partsSP(d);
+  return `${String(p.hour).padStart(2, "0")}:${String(p.min).padStart(2, "0")}`;
+}
