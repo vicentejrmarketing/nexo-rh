@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { defineConfig, env } from "prisma/config";
+import { defineConfig } from "prisma/config";
 
 // Migrações: em máquinas com acesso normal à internet, `npx prisma migrate deploy` funciona.
 // Em ambientes com rede restrita, use `npm run db:migrate` (motor Wasm oficial da Prisma).
@@ -9,5 +9,6 @@ export default defineConfig({
     path: "prisma/migrations",
     seed: "tsx prisma/seed.ts",
   },
-  datasource: { url: env("DATABASE_URL") },
+  // `prisma generate` não precisa do banco; só as migrações usam a URL.
+  datasource: { url: process.env.DATABASE_URL ?? "" },
 });
