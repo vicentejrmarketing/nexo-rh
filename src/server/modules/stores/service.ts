@@ -151,3 +151,43 @@ export async function saveStore(actor: Actor, id: string | null, raw: StoreInput
     throw e;
   }
 }
+
+/**
+ * O que impede excluir a loja. Vagas sem candidatos saem junto com a loja;
+ * vagas com candidatos (histórico) e entrevistas marcadas na loja bloqueiam a exclusão.
+ */
+export async function storeDeletionCheck(id: string) {
+  const [jobs, interviews] = await Promise.all([
+    db.job.findMany({ where: { storeId: id }, select: { id: true, _count: { select: { processes: true } } } }),
+    db.interview.count({ where: { storeId: id } }),
+  ]);
+  const withCandidates = jobs.filter((j) => j._count.processes > 0).length;
+  return { emptyJobs: jobs.length - withCandidates, jobsWithCandidates: withCandidates, interviews, allowed: withCandidates === 0 && interviews === 0 };
+}
+
+export async function deleteStore(actor: Actor, id: string, ip?: string | null) {
+  authorize(actor, "stores.manage");
+  if (!canAccessStore(actor, id)) throw new NotFoundError("Loja não encontrada.");
+  const store = await db.store.findUnique({ where: { id } });
+  if (!store) throw new NotFoundError("Loja não encontrada.");
+  const check = await storeDeletionCheck(id);
+  if (!check.allowed) {
+    const parts = [
+      check.jobsWithCandidates ? `${check.jobsWithCandidates} vaga(s) com candidatos` : null,
+      check.interviews ? `${check.interviews} entrevista(s) registrada(s)` : null,
+    ].filter(Boolean).join(" e ");
+    throw new ForbiddenError(`Esta loja tem ${parts}. Para manter o histórico, inative a loja em vez de excluir.`);
+  }
+  await db.$transaction(async (tx) => {
+    // Revalida dentro da transação: ninguém pode ter vinculado candidato no meio do caminho.
+    const busy = await tx.job.count({ where: { storeId: id, processes: { some: {} } } });
+    if (busy || (await tx.interview.count({ where: { storeId: id } }))) throw new ForbiddenError("A loja ganhou candidatos ou entrevistas agora há pouco. Atualize a página.");
+    const removed = await tx.job.deleteMany({ where: { storeId: id } });
+    await tx.store.delete({ where: { id } }); // acessos de usuários saem junto; candidatos perdem só a "loja desejada"
+    await audit(tx, {
+      actorId: actor.id, action: "store.delete", entityType: "Store", entityId: id, ipAddress: ip,
+      summary: `Excluiu a loja ${store.name} (${store.city}/${store.state})${removed.count ? ` e ${removed.count} vaga(s) sem candidatos` : ""}`,
+      before: { name: store.name, city: store.city, state: store.state, status: store.status, managerId: store.managerId },
+    });
+  });
+}

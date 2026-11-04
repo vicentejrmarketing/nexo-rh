@@ -3,8 +3,8 @@
 import { redirect } from "next/navigation";
 import { requireActor } from "@/server/auth/current-user";
 import { clientInfo } from "@/server/auth/session";
-import { toActionError } from "@/server/errors";
-import { saveStore } from "@/server/modules/stores/service";
+import { toActionError, type ActionResult } from "@/server/errors";
+import { deleteStore, saveStore } from "@/server/modules/stores/service";
 import { formValues, nextSubmission, str, type FormState } from "@/lib/form";
 
 export async function saveStoreAction(id: string | null, prev: FormState, fd: FormData): Promise<FormState> {
@@ -27,4 +27,14 @@ export async function saveStoreAction(id: string | null, prev: FormState, fd: Fo
     return { ...toActionError(e), values, submission: nextSubmission(prev) };
   }
   redirect(`/lojas/${storeId}?salvo=1`);
+}
+
+export async function deleteStoreAction(id: string): Promise<ActionResult> {
+  try {
+    const { ip } = await clientInfo();
+    await deleteStore(await requireActor(), id, ip);
+  } catch (e) {
+    return toActionError(e);
+  }
+  redirect("/lojas?excluida=1");
 }

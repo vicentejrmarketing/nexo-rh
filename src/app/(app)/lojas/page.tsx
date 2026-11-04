@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { MagnifyingGlass, Plus, Storefront, Trophy } from "@phosphor-icons/react/ssr";
-import { Badge, Card, CardHeader, EmptyState, Input, PageHeader, PageSkeleton, Select, buttonClass } from "@/components/ui";
+import { Alert, Badge, Card, CardHeader, EmptyState, Input, PageHeader, PageSkeleton, Select, buttonClass } from "@/components/ui";
 import { NoPermission } from "@/components/layout/states";
 import { requirePageActor } from "@/server/auth/current-user";
 import { can } from "@/server/authz/authorize";
@@ -36,6 +36,7 @@ async function Content({ searchParams }: { searchParams: PageProps<"/lojas">["se
         description={actor.allStores ? "Todas as unidades da empresa." : "As lojas que você acompanha."}
         actions={canManage && <Link href="/lojas/nova" className={buttonClass("primary")}><Plus size={18} weight="bold" /> Nova loja</Link>}
       />
+      {sp.excluida && <div className="mb-5"><Alert tone="success">Loja excluída.</Alert></div>}
       <div className="grid gap-5 xl:grid-cols-[1fr_380px]">
         <Card className="min-w-0">
           <form className="flex flex-wrap gap-3 border-b border-line p-4" role="search">

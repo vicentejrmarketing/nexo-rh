@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { Briefcase, CalendarDots, ClockCounterClockwise, PencilSimple, Plus, UserCheck, UsersThree } from "@phosphor-icons/react/ssr";
+import { Briefcase, CalendarDots, ClockCounterClockwise, PencilSimple, Plus, Trash, UserCheck, UsersThree } from "@phosphor-icons/react/ssr";
 import { Alert, Badge, Breadcrumb, PageHeader, PageSkeleton, buttonClass } from "@/components/ui";
 import { NoPermission } from "@/components/layout/states";
 import { notFoundCard } from "@/components/layout/not-found-card";
@@ -9,7 +9,9 @@ import { Panel } from "@/components/dashboard/widgets";
 import { StagePill } from "@/components/recruitment/stage-pill";
 import { requirePageActor } from "@/server/auth/current-user";
 import { can } from "@/server/authz/authorize";
-import { getStore } from "@/server/modules/stores/service";
+import { getStore, storeDeletionCheck } from "@/server/modules/stores/service";
+import { ConfirmAction } from "@/components/ui/confirm-action";
+import { deleteStoreAction } from "../actions";
 import { PRIORITY_LABEL, JOB_STATUS_LABEL } from "@/server/modules/jobs/service";
 import { formatDate, formatDateTime } from "@/lib/format";
 
@@ -41,6 +43,7 @@ async function Content({ params, searchParams }: { params: PageProps<"/lojas/[id
   const data = await getStore(actor, id).catch(() => null);
   if (!data) return notFoundCard("Loja não encontrada", "/lojas", "Voltar para lojas");
   const { store, stats } = data;
+  const deletion = can(actor, "stores.manage") ? await storeDeletionCheck(store.id) : null;
 
   return (
     <>
@@ -158,6 +161,29 @@ async function Content({ params, searchParams }: { params: PageProps<"/lojas/[id
           </ul>
         )}
       </Panel>
+
+      {deletion && (
+        <Panel title="Excluir loja" icon={Trash} className="mt-5">
+          {deletion.allowed ? (
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <p className="max-w-xl text-[13.5px] text-muted">
+                A loja será apagada definitivamente{deletion.emptyJobs ? `, junto com ${deletion.emptyJobs} vaga(s) sem candidatos` : ""}. Os acessos dos usuários a esta loja serão removidos. Esta ação não pode ser desfeita.
+              </p>
+              <ConfirmAction
+                label="Excluir loja" size="sm" icon={<Trash size={16} />} confirmLabel="Excluir definitivamente"
+                question={`Excluir a loja ${store.name} definitivamente${deletion.emptyJobs ? ` e ${deletion.emptyJobs} vaga(s) sem candidatos` : ""}?`}
+                action={deleteStoreAction.bind(null, store.id)}
+              />
+            </div>
+          ) : (
+            <p className="text-[13.5px] text-muted">
+              Não é possível excluir: a loja tem{" "}
+              {[deletion.jobsWithCandidates ? `${deletion.jobsWithCandidates} vaga(s) com candidatos` : null, deletion.interviews ? `${deletion.interviews} entrevista(s) registrada(s)` : null].filter(Boolean).join(" e ")}
+              . Para manter o histórico, <Link href={`/lojas/${store.id}/editar`} className="font-semibold text-ink hover:underline">inative a loja</Link>. Se forem cadastros de teste, exclua antes os candidatos dessas vagas.
+            </p>
+          )}
+        </Panel>
+      )}
     </>
   );
 }
