@@ -8,6 +8,7 @@ import { notFoundCard } from "@/components/layout/not-found-card";
 import { Panel } from "@/components/dashboard/widgets";
 import { StagePill } from "@/components/recruitment/stage-pill";
 import { InterviewForm } from "@/components/interviews/interview-form";
+import { OpenConversationButton } from "@/components/messages/open-button";
 import { CancelForm, EvaluationForm, OutcomeButtons } from "@/components/interviews/detail-controls";
 import { requirePageActor } from "@/server/auth/current-user";
 import { can } from "@/server/authz/authorize";
@@ -51,7 +52,13 @@ async function Content({ params, searchParams }: { params: PageProps<"/entrevist
         description={`${formatDateTime(i.scheduledAt)} até ${timeKey(end)} · ${MODE_LABEL[i.mode]} · ${i.candidateJob.job.title}`}
         actions={
           <>
-            {wa && <a href={`https://wa.me/${digitsOnly(wa)}`} target="_blank" rel="noopener noreferrer" className={buttonClass("secondary")}><WhatsappLogo size={17} weight="fill" /> WhatsApp</a>}
+            {wa && can(actor, "messages.send") && i.status === "SCHEDULED" && (
+              <OpenConversationButton candidateId={c.id} label={started ? "Mensagem" : "Enviar convocação"} extra={`&entrevista=${i.id}${started ? "" : "&modelo=Convocação para entrevista"}`} />
+            )}
+            {wa && can(actor, "messages.send") && i.status === "SCHEDULED" && !started && (
+              <OpenConversationButton candidateId={c.id} label="Lembrete" extra={`&entrevista=${i.id}&modelo=Lembrete de entrevista`} />
+            )}
+            {wa && !can(actor, "messages.send") && <a href={`https://wa.me/${digitsOnly(wa)}`} target="_blank" rel="noopener noreferrer" className={buttonClass("secondary")}><WhatsappLogo size={17} weight="fill" /> WhatsApp</a>}
             {i.meetingUrl && i.status === "SCHEDULED" && <a href={i.meetingUrl} target="_blank" rel="noopener noreferrer" className={buttonClass("primary")}><LinkSimple size={17} weight="bold" /> Entrar na reunião</a>}
           </>
         }

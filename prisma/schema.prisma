@@ -736,6 +736,8 @@ model Message {
   templateParams Json?
   body           String?
   mediaType      String?
+  mediaId        String? // id da mídia na Meta (baixada sob demanda, com permissão)
+  mediaMime      String?
   status         MessageStatus
   errorCode      String?
   errorMessage   String?
@@ -769,6 +771,9 @@ model MessageTemplate {
   category     TemplateCategory @default(UTILITY)
   metaName     String? // nome do template na Meta
   approval     TemplateApproval @default(LOCAL_ONLY)
+  variables    Json? // ordem das variáveis: ["nome", "vaga", ...] → {{1}}, {{2}}
+  rejectionReason String?
+  lastSyncedAt DateTime?
   active       Boolean          @default(true)
   updatedById  String?
   createdAt    DateTime         @default(now())
@@ -791,6 +796,9 @@ model WhatsAppIntegration {
   appSecretEnc        String? // AES-256-GCM
   verifyTokenHash     String? // SHA-256
   accessTokenLast4    String?
+  verifiedName        String? // nome comercial verificado na Meta
+  qualityRating       String?
+  lastWebhookAt       DateTime? // último evento recebido (mostra que o webhook está ativo)
   status              IntegrationStatus @default(NOT_CONNECTED)
   lastCheckedAt       DateTime?
   lastError           String?

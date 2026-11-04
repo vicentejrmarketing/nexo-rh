@@ -19,6 +19,7 @@ import { formatDate, formatDateTime } from "@/lib/format";
 import { formatMoneyBR } from "@/lib/form";
 import { digitsOnly, formatPhoneBR } from "@/lib/phone";
 import { anonymizeAction } from "../actions";
+import { OpenConversationButton } from "@/components/messages/open-button";
 import { LinkJob, NoteForm, OwnerControl, ResumeUpload, TagEditor, TalentPoolToggle } from "./profile-controls";
 
 export const metadata: Metadata = { title: "Candidato" };
@@ -66,7 +67,8 @@ async function Content({ params, searchParams }: { params: PageProps<"/candidato
         }
         actions={
           <>
-            {wa && <a href={`https://wa.me/${digitsOnly(wa)}`} target="_blank" rel="noopener noreferrer" className={buttonClass("secondary")}><WhatsappLogo size={17} weight="fill" /> WhatsApp</a>}
+            {wa && can(actor, "messages.view") && <OpenConversationButton candidateId={c.id} label="Mensagem no WhatsApp" />}
+            {wa && !can(actor, "messages.view") && <a href={`https://wa.me/${digitsOnly(wa)}`} target="_blank" rel="noopener noreferrer" className={buttonClass("secondary")}><WhatsappLogo size={17} weight="fill" /> WhatsApp</a>}
             {data.canEdit && <Link href={`/candidatos/${c.id}/editar`} className={buttonClass("secondary")}><PencilSimple size={17} /> Editar</Link>}
           </>
         }
@@ -219,12 +221,16 @@ async function Content({ params, searchParams }: { params: PageProps<"/candidato
 
           <Panel title="Conversas" icon={ChatText}>
             {c.conversations.length === 0 ? (
-              <p className="text-[13px] text-muted">Nenhuma conversa registrada. O atendimento pelo WhatsApp oficial chega na Etapa 4.</p>
+              <p className="text-[13px] text-muted">Nenhuma conversa no WhatsApp ainda.{c.optedOutAt ? " O candidato pediu para não receber mensagens." : ""}</p>
             ) : (
               c.conversations.map((cv) => (
-                <p key={cv.id} className="text-[13px]">{cv._count.messages} mensagem(ns) · última em {formatDateTime(cv.lastMessageAt)}</p>
+                <p key={cv.id} className="text-[13px]">
+                  {can(actor, "messages.view") ? <Link href={`/mensagens?c=${cv.id}`} className="font-medium underline decoration-brand decoration-2 underline-offset-4">{cv._count.messages} mensagem(ns)</Link> : `${cv._count.messages} mensagem(ns)`}
+                  {cv.lastMessageAt ? ` · última em ${formatDateTime(cv.lastMessageAt)}` : ""}
+                </p>
               ))
             )}
+            {c.optedOutAt && c.conversations.length > 0 && <p className="mt-2 text-[12.5px] text-warning">Pediu para não receber mensagens em {formatDate(c.optedOutAt)}.</p>}
           </Panel>
 
           <Panel title="LGPD" icon={ShieldCheck}>

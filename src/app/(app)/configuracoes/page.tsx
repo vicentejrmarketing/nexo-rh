@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import {
-  Building2, ChevronRight, History, KeyRound, ListOrdered, MessageSquareText, Bell, BriefcaseBusiness, ShieldCheck, Store, Users, Smartphone,
+  Building2, ChevronRight, History, KeyRound, ListOrdered, MessageSquareText, BriefcaseBusiness, ShieldCheck, Store, Users, Smartphone,
   type LucideIcon,
 } from "lucide-react";
 import { Badge, Card, PageHeader, PageSkeleton } from "@/components/ui";
@@ -25,8 +25,7 @@ const SECTIONS: Section[] = [
   { title: "Lojas", description: "Unidades, responsáveis e status.", icon: Store, href: "/lojas", anyOf: ["stores.manage"] },
   { title: "Cargos", description: "Cargos usados nas vagas e no cadastro de candidatos.", icon: BriefcaseBusiness, href: "/configuracoes/cargos", anyOf: ["settings.manage"] },
   { title: "Dados da empresa e LGPD", description: "Razão social, contato, política de privacidade e retenção.", icon: Building2, href: "/configuracoes/empresa", anyOf: ["settings.manage"] },
-  { title: "Modelos de mensagens", description: "Textos de convocação, lembrete, aprovação e reprovação.", icon: MessageSquareText, stage: "Etapa 4", anyOf: ["templates.manage"] },
-  { title: "Notificações", description: "Alertas de entrevistas e candidatos parados.", icon: Bell, stage: "Etapa 4", anyOf: ["settings.manage"] },
+  { title: "Modelos de mensagens", description: "Textos de convocação, lembrete, aprovação e reprovação.", icon: MessageSquareText, href: "/configuracoes/modelos", anyOf: ["templates.manage"] },
 ];
 
 function visible(actor: Actor, s: Section) {

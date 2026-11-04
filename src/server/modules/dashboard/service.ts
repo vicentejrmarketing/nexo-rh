@@ -1,5 +1,6 @@
 import "server-only";
 import { ensureAlerts } from "@/server/modules/alerts/service";
+import { unreadTotal } from "@/server/modules/messages/service";
 import { cache } from "react";
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/server/db/client";
@@ -225,16 +226,13 @@ export async function getFootprint(actor: Actor) {
 
 /** Contadores do menu e do sino (uma consulta por requisição, mesmo usados em dois lugares). */
 export const getShellCounters = cache(async (actor: Actor) => {
-  const scope = scopeFor(actor);
   await ensureAlerts(actor).catch((e) => console.error("[alertas]", e));
   const [unreadMessages, notifications] = await Promise.all([
-    actor.permissions.has("messages.view")
-      ? db.conversation.aggregate({ where: scope.kind === "all" ? {} : { candidate: candidateWhere(scope) }, _sum: { unreadCount: true } })
-      : Promise.resolve({ _sum: { unreadCount: 0 } }),
+    unreadTotal(actor),
     db.notification.findMany({ where: { userId: actor.id }, orderBy: { createdAt: "desc" }, take: 8, select: { id: true, title: true, body: true, link: true, readAt: true, createdAt: true } }),
   ]);
   return {
-    unreadMessages: unreadMessages._sum.unreadCount ?? 0,
+    unreadMessages,
     notifications,
     unreadNotifications: notifications.filter((n) => !n.readAt).length,
   };
