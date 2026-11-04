@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Bell, CaretDown, GearSix, Key, SignOut } from "@phosphor-icons/react";
+import { Bell, Briefcase, CaretDown, GearSix, Key, Plus, SignOut, UserPlus } from "@phosphor-icons/react";
 import { cn } from "@/components/ui";
 import { logoutAction } from "@/app/(auth)/actions";
 import { initials, useDismiss } from "./sidebar";
@@ -103,9 +103,46 @@ function AvatarMenu({ name, canSettings }: { name: string; canSettings: boolean 
   );
 }
 
-export function TopbarActions({ name, canSettings, notifications, unread }: { name: string; canSettings: boolean; notifications: Notification[]; unread: number }) {
+/** Atalho de cadastro rápido para o recrutador: novo candidato ou nova vaga, de qualquer tela. */
+function QuickCreate({ candidate, job }: { candidate: boolean; job: boolean }) {
+  const [open, setOpen] = useState(false);
+  const ref = useDismiss<HTMLDivElement>(open, () => setOpen(false));
+  if (!candidate && !job) return null;
+  return (
+    <div ref={ref} className="relative max-sm:hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className="flex h-12 items-center gap-2 rounded-full bg-ink px-5 text-[14px] font-semibold text-white shadow-[0_2px_10px_rgba(17,18,22,0.12)] hover:bg-ink/90"
+      >
+        <Plus size={18} weight="bold" className="text-brand" /> Novo
+      </button>
+      {open && (
+        <div role="menu" className="absolute right-0 z-30 mt-2 w-60 overflow-hidden rounded-2xl border border-line bg-white py-1 shadow-xl">
+          {candidate && (
+            <Link role="menuitem" href="/candidatos/novo" onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-[14px] hover:bg-surface">
+              <UserPlus size={18} weight="fill" /> Novo candidato
+            </Link>
+          )}
+          {job && (
+            <Link role="menuitem" href="/vagas/nova" onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-[14px] hover:bg-surface">
+              <Briefcase size={18} weight="fill" /> Nova vaga
+            </Link>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function TopbarActions({
+  name, canSettings, notifications, unread, canCreateCandidate = false, canCreateJob = false,
+}: { name: string; canSettings: boolean; notifications: Notification[]; unread: number; canCreateCandidate?: boolean; canCreateJob?: boolean }) {
   return (
     <div className="flex items-center gap-4">
+      <QuickCreate candidate={canCreateCandidate} job={canCreateJob} />
       <NotificationsButton items={notifications} unread={unread} />
       <AvatarMenu name={name} canSettings={canSettings} />
     </div>

@@ -181,6 +181,7 @@ model RolePermission {
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
   @@id([roleId, permissionId])
+  @@index([permissionId])
   @@map("role_permissions")
 }
 
@@ -316,6 +317,7 @@ model Store {
   @@unique([name, city])
   @@index([status])
   @@index([city, state])
+  @@index([managerId])
   @@map("stores")
 }
 
@@ -369,6 +371,9 @@ model Job {
   @@index([recruiterId, status])
   @@index([priority, status])
   @@index([openedAt])
+  @@index([storeId])
+  @@index([positionId])
+  @@index([createdById])
   @@map("jobs")
 }
 
@@ -413,6 +418,8 @@ model Candidate {
   @@index([ownerId])
   @@index([createdAt])
   @@index([inTalentPool, retentionUntil])
+  @@index([desiredStoreId])
+  @@index([desiredPositionId])
   @@map("candidates")
 }
 
@@ -433,6 +440,7 @@ model Attachment {
   uploadedBy User?     @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
 
   @@index([candidateId, kind])
+  @@index([uploadedById])
   @@map("attachments")
 }
 
@@ -467,6 +475,7 @@ model CandidateNote {
   author      User?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
 
   @@index([candidateId, createdAt])
+  @@index([authorId])
   @@map("candidate_notes")
 }
 
@@ -551,6 +560,8 @@ model StageHistory {
 
   @@index([candidateJobId, movedAt])
   @@index([toStageId, movedAt])
+  @@index([fromStageId])
+  @@index([movedById])
   @@map("stage_history")
 }
 
@@ -587,6 +598,7 @@ model Interview {
   @@index([interviewerId, scheduledAt])
   @@index([storeId, scheduledAt])
   @@index([candidateJobId])
+  @@index([createdById])
   @@map("interviews")
 }
 
@@ -607,6 +619,7 @@ model InterviewEvaluation {
   evaluator User?     @relation(fields: [evaluatorId], references: [id], onDelete: SetNull)
 
   @@index([interviewId])
+  @@index([evaluatorId])
   @@map("interview_evaluations")
 }
 
@@ -663,6 +676,8 @@ model Message {
 
   @@index([conversationId, createdAt])
   @@index([status, nextAttemptAt])
+  @@index([sentById])
+  @@index([templateId])
   @@map("messages")
 }
 
@@ -684,6 +699,7 @@ model MessageTemplate {
   updatedBy User?     @relation(fields: [updatedById], references: [id], onDelete: SetNull)
   messages  Message[]
 
+  @@index([updatedById])
   @@map("message_templates")
 }
 

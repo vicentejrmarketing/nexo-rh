@@ -15,6 +15,8 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   poweredByHeader: false,
   serverExternalPackages: ["@node-rs/argon2"],
+  // Currículo em PDF de até 4 MB + campos do formulário (a Vercel aceita até 4,5 MB por requisição).
+  experimental: { serverActions: { bodySizeLimit: "4.4mb" } },
   turbopack: {
     rules: {
       "*.css": {

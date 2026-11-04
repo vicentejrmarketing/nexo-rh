@@ -80,7 +80,12 @@ function withRls(sql) {
   const tables = [...sql.matchAll(/CREATE TABLE "([^"]+)"/g)].map((m) => m[1]);
   if (!tables.length) return sql;
   const rls = tables.map((t) => `ALTER TABLE "${t}" ENABLE ROW LEVEL SECURITY;`).join("\n");
-  return `${sql.trimEnd()}\n\n-- Segurança: bloqueia a Data API do Supabase (sem policies = nenhum acesso)\n${rls}\n`;
+  // Em produção a aplicação usa o papel nexo_app: ele recebe acesso às tabelas novas.
+  // O bloco só age se o papel existir (no banco local de desenvolvimento ele não existe).
+  const grants = tables
+    .map((t) => `    EXECUTE 'CREATE POLICY nexo_app_all ON "${t}" FOR ALL TO nexo_app USING (true) WITH CHECK (true)';`)
+    .join("\n");
+  return `${sql.trimEnd()}\n\n-- Segurança: bloqueia a Data API do Supabase (sem policies = nenhum acesso)\n${rls}\n\nDO $$\nBEGIN\n  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nexo_app') THEN\n${grants}\n  END IF;\nEND $$;\n`;
 }
 
 async function create(name) {

@@ -22,9 +22,9 @@ const SECTIONS: Section[] = [
   { title: "Minha senha", description: "Trocar a sua senha de acesso.", icon: KeyRound, href: "/trocar-senha", anyOf: "all" },
   { title: "Etapas do funil", description: "As etapas do processo seletivo e a ordem delas.", icon: ListOrdered, href: "/configuracoes/etapas", anyOf: ["settings.manage", "pipeline.view"] },
   { title: "Integração WhatsApp", description: "Conexão com a API oficial da Meta.", icon: Smartphone, href: "/configuracoes/whatsapp", anyOf: ["integrations.manage"] },
-  { title: "Lojas", description: "Unidades, responsáveis e status.", icon: Store, stage: "Etapa 2", anyOf: ["stores.manage"] },
-  { title: "Cargos", description: "Cargos usados nas vagas e no cadastro de candidatos.", icon: BriefcaseBusiness, stage: "Etapa 2", anyOf: ["settings.manage"] },
-  { title: "Dados da empresa", description: "Razão social, contato e política de privacidade.", icon: Building2, stage: "Etapa 2", anyOf: ["settings.manage"] },
+  { title: "Lojas", description: "Unidades, responsáveis e status.", icon: Store, href: "/lojas", anyOf: ["stores.manage"] },
+  { title: "Cargos", description: "Cargos usados nas vagas e no cadastro de candidatos.", icon: BriefcaseBusiness, href: "/configuracoes/cargos", anyOf: ["settings.manage"] },
+  { title: "Dados da empresa e LGPD", description: "Razão social, contato, política de privacidade e retenção.", icon: Building2, href: "/configuracoes/empresa", anyOf: ["settings.manage"] },
   { title: "Modelos de mensagens", description: "Textos de convocação, lembrete, aprovação e reprovação.", icon: MessageSquareText, stage: "Etapa 4", anyOf: ["templates.manage"] },
   { title: "Notificações", description: "Alertas de entrevistas e candidatos parados.", icon: Bell, stage: "Etapa 4", anyOf: ["settings.manage"] },
 ];

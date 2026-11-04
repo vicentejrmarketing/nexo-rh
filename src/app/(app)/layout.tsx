@@ -47,6 +47,8 @@ async function AppTopbar() {
     <TopbarActions
       name={actor.name}
       canSettings={canSettings}
+      canCreateCandidate={can(actor, "candidates.create")}
+      canCreateJob={can(actor, "jobs.create")}
       unread={counters.unreadNotifications}
       notifications={counters.notifications.map((n) => ({ ...n, createdAt: n.createdAt.toISOString(), readAt: n.readAt?.toISOString() ?? null }))}
     />

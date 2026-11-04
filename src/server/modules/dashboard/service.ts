@@ -2,40 +2,12 @@ import "server-only";
 import { cache } from "react";
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/server/db/client";
-import { authorize, scopeFor, type Actor, type Scope } from "@/server/authz/authorize";
+import { authorize, scopeFor, type Actor } from "@/server/authz/authorize";
+import { candidateWhere, jobWhere, processWhere, unscoped, type AnyScope } from "@/server/authz/scopes";
 import { addDays, daysBetween, dayKey, percentChange, startOfDaySP, type Period } from "@/lib/period";
 
 // Todos os números do painel vêm do banco e respeitam o escopo do usuário (lojas e, para
 // recrutador, os próprios processos). Nada é estimado ou fixo.
-
-/** Escopo do painel: igual ao do usuário, mas "todas as lojas" também pode ser filtrado por recrutador. */
-type AnyScope = { kind: "all"; ownerId?: string } | Extract<Scope, { kind: "stores" }>;
-
-/** Sem restrição alguma: todas as lojas e todos os recrutadores. */
-const unscoped = (s: AnyScope) => s.kind === "all" && !s.ownerId;
-
-function processWhere(scope: AnyScope): Prisma.CandidateJobWhereInput {
-  if (scope.kind === "all") return scope.ownerId ? { recruiterId: scope.ownerId } : {};
-  return { job: { storeId: { in: scope.storeIds } }, ...(scope.ownerId ? { recruiterId: scope.ownerId } : {}) };
-}
-
-function candidateWhere(scope: AnyScope): Prisma.CandidateWhereInput {
-  if (scope.kind === "all" && scope.ownerId) {
-    return { anonymizedAt: null, OR: [{ ownerId: scope.ownerId }, { processes: { some: { recruiterId: scope.ownerId } } }] };
-  }
-  if (scope.kind === "all") return { anonymizedAt: null };
-  const pw = processWhere(scope);
-  return {
-    anonymizedAt: null,
-    OR: [{ desiredStoreId: { in: scope.storeIds } }, { processes: { some: pw } }],
-    ...(scope.ownerId ? { AND: [{ OR: [{ ownerId: scope.ownerId }, { processes: { some: { recruiterId: scope.ownerId } } }] }] } : {}),
-  };
-}
-
-function jobWhere(scope: AnyScope): Prisma.JobWhereInput {
-  if (scope.kind === "all") return scope.ownerId ? { recruiterId: scope.ownerId } : {};
-  return { storeId: { in: scope.storeIds }, ...(scope.ownerId ? { recruiterId: scope.ownerId } : {}) };
-}
 
 /** Totais gerais (sem período), usados nos testes de escopo e como referência. */
 export async function getHeadlineKpis(actor: Actor) {

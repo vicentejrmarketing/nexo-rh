@@ -1,3 +1,4 @@
+import Link from "next/link";
 import clsx from "clsx";
 import { twMerge } from "tailwind-merge";
 import type { ComponentProps, ReactNode } from "react";
@@ -49,8 +50,8 @@ export function CardHeader({ title, description, action }: { title: ReactNode; d
 // ───────── Cabeçalho de página ─────────
 export function PageHeader({ title, description, actions }: { title: ReactNode; description?: ReactNode; actions?: ReactNode }) {
   return (
-    // O espaço à direita fica livre para o sino e o avatar do topo.
-    <div className="mb-6 flex min-h-12 flex-wrap items-center justify-between gap-4 pr-[128px] lg:pr-[140px]">
+    // O espaço à direita fica livre para o atalho "Novo", o sino e o avatar do topo.
+    <div className="mb-6 flex min-h-12 flex-wrap items-center justify-between gap-4 pr-[128px] sm:pr-[264px]">
       <div>
         <h1 className="text-[26px] font-bold tracking-tight text-ink lg:text-[30px]">{title}</h1>
         {description && <p className="mt-0.5 text-[15px] font-medium text-ink/70">{description}</p>}
@@ -168,5 +169,58 @@ export function PageSkeleton() {
       </div>
       <Skeleton className="mt-4 h-72" />
     </div>
+  );
+}
+
+export function Textarea({ className, invalid, ...props }: ComponentProps<"textarea"> & { invalid?: boolean }) {
+  return (
+    <textarea
+      aria-invalid={invalid || undefined}
+      className={cn("min-h-24 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink placeholder:text-muted/70 focus:border-ink focus:outline-none aria-[invalid=true]:border-danger", className)}
+      {...props}
+    />
+  );
+}
+
+export function Checkbox({ label, hint, className, ...props }: ComponentProps<"input"> & { label: ReactNode; hint?: ReactNode }) {
+  return (
+    <label className={cn("flex cursor-pointer items-start gap-2.5 text-sm text-ink", className)}>
+      <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-[#111216]" {...props} />
+      <span>
+        {label}
+        {hint && <span className="block text-[12.5px] text-muted">{hint}</span>}
+      </span>
+    </label>
+  );
+}
+
+/** Lista de pares rótulo/valor (perfis e detalhes). */
+export function InfoList({ items, cols = 2 }: { items: { label: string; value: ReactNode }[]; cols?: 1 | 2 | 3 }) {
+  return (
+    <dl className={cn("grid gap-x-6 gap-y-4 text-sm", cols === 3 ? "sm:grid-cols-3" : cols === 2 ? "sm:grid-cols-2" : "")}>
+      {items.map((i) => (
+        <div key={i.label} className="min-w-0">
+          <dt className="text-[12.5px] text-muted">{i.label}</dt>
+          <dd className="mt-0.5 break-words text-ink">{i.value || <span className="text-muted">—</span>}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+export function Breadcrumb({ items }: { items: { href?: string; label: string }[] }) {
+  return (
+    <nav aria-label="Caminho" className="mb-1 truncate pr-[128px] text-[13px] text-muted sm:pr-[264px]">
+      {items.map((i, idx) => (
+        <span key={i.label}>
+          {idx > 0 && " / "}
+          {i.href ? (
+            <Link href={i.href} className="hover:text-ink">{i.label}</Link>
+          ) : (
+            <span>{i.label}</span>
+          )}
+        </span>
+      ))}
+    </nav>
   );
 }
