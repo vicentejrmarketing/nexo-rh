@@ -1,36 +1,78 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NEXO RH
 
-## Getting Started
+Sistema de recrutamento e seleção para várias lojas: vagas, candidatos, funil, entrevistas,
+WhatsApp oficial (Meta Cloud API), portal público de inscrição e relatórios.
 
-First, run the development server:
+## Situação
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+| Etapa | Conteúdo | Status |
+| --- | --- | --- |
+| 1 — Fundação | Projeto, banco completo, autenticação, perfis e permissões, lojas por usuário, auditoria, layout preto e amarelo | Entregue |
+| 2 — Gestão | Lojas, vagas, candidatos, banco de talentos | Próxima |
+| 3 — Recrutamento | Funil Kanban, histórico, entrevistas, avaliações | — |
+| 4 — Comunicação | Central de mensagens, WhatsApp oficial, webhooks, templates | — |
+| 5 — Portal público | Vagas abertas, inscrição, currículo | — |
+| 6 — Inteligência | Dashboard completo, relatórios, exportações | — |
+| 7 — Finalização | Revisão de segurança, desempenho, implantação | — |
+
+## Stack
+
+Next.js 16 (App Router, Cache Components) · TypeScript · Tailwind CSS 4 · PostgreSQL (Supabase) ·
+Prisma 7 · Zod · Argon2id · Vitest. Tarefas em segundo plano: Inngest (Etapa 4).
+
+## Organização
+
+```
+prisma/schema.prisma        modelo de dados completo (30 tabelas)
+prisma/migrations/          migrações versionadas (+ snapshot do schema)
+prisma/seed.ts              perfis, permissões, etapas do funil e 1º administrador
+scripts/db/migrate.mjs      migrações com o motor oficial da Prisma em Wasm
+src/server/                 regras de negócio — nunca no navegador
+  auth/                     login, sessões, senhas
+  authz/                    catálogo de permissões, authorize(), scopeFor()
+  audit/                    histórico de atividades
+  modules/<módulo>/         serviço e validações de cada módulo
+src/app/(auth)/             login e troca de senha
+src/app/(app)/              área logada (10 abas)
+src/components/             componentes visuais
+tests/                      testes automatizados
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Regras de segurança já implementadas
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Senhas com Argon2id; senha temporária obrigatoriamente trocada no primeiro acesso.
+- Sessões no banco (só o hash do token), 12 h deslizantes, máximo de 7 dias, revogáveis.
+- Bloqueio de 15 min após 5 erros por e-mail ou 20 por IP; mesma mensagem para e-mail inexistente.
+- Toda permissão é checada no servidor (`authorize`), com escopo por loja (`scopeFor`).
+  Recrutador só altera registros sob sua responsabilidade.
+- Alterações importantes gravam `ActivityLog` na mesma transação.
+- Mudança de perfil, lojas ou situação encerra as sessões abertas do usuário.
+- RLS habilitado em todas as tabelas: a Data API pública do Supabase não lê nada.
+- Cabeçalhos de segurança (X-Frame-Options, nosniff, Referrer-Policy, HSTS em produção).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Rodando localmente
 
-## Learn More
+Requisitos: Node 22+ e PostgreSQL 16+.
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm install
+cp .env.example .env            # preencha DATABASE_URL, TEST_DATABASE_URL e ADMIN_*
+npx prisma migrate deploy       # ou: npm run db:migrate
+npm run db:seed
+npm run dev                     # http://localhost:3000
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Testes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run db:migrate:test   # prepara o banco *_test
+npm test                  # 89 testes: matriz de permissões, escopo por loja, usuários, login, indicadores
+npm run typecheck
+npm run lint
+```
 
-## Deploy on Vercel
+## Migrações
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Alterou `prisma/schema.prisma`? Gere a migração com `npm run db:migrate:create -- nome_curto`
+(ou `npx prisma migrate dev --name nome_curto` em máquina com acesso normal à internet) e aplique com
+`npm run db:migrate`. Nunca edite uma migração já aplicada.
