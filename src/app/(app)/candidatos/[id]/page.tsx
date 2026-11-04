@@ -18,7 +18,7 @@ import { storageReady } from "@/server/storage";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { formatMoneyBR } from "@/lib/form";
 import { digitsOnly, formatPhoneBR } from "@/lib/phone";
-import { anonymizeAction } from "../actions";
+import { anonymizeAction, deleteCandidateAction } from "../actions";
 import { optOutAction } from "@/app/(app)/mensagens/enviar/actions";
 import { candidateCommunication } from "@/server/modules/automations/service";
 import { db } from "@/server/db/client";
@@ -282,6 +282,18 @@ async function Content({ params, searchParams }: { params: PageProps<"/candidato
               ))}
               <li className="text-[12px] text-muted">Dados mantidos até {formatDate(c.retentionUntil)} — o prazo renova a cada novo contato.</li>
             </ul>
+            {can(actor, "candidates.delete") && (
+              <div className="mt-4 border-t border-line pt-4">
+                <p className="mb-2 text-[12.5px] text-muted">Excluir apaga tudo, inclusive candidaturas e entrevistas (somem dos relatórios). Anonimizar remove só os dados pessoais e mantém as estatísticas.</p>
+                <ConfirmAction
+                  label="Excluir candidato"
+                  size="sm"
+                  question="Excluir este candidato de vez, com candidaturas, entrevistas, mensagens e currículo? Não dá para desfazer."
+                  confirmLabel="Excluir definitivamente"
+                  action={deleteCandidateAction.bind(null, c.id)}
+                />
+              </div>
+            )}
             {data.canAnonymize && (
               <div className="mt-4 border-t border-line pt-4">
                 <ConfirmAction

@@ -27,6 +27,7 @@ async function Content({ searchParams }: { searchParams: PageProps<"/candidatos"
     <>
       <PageHeader title="Candidatos" description="Busque por nome, telefone ou e-mail e filtre por loja, cargo e etapa." actions={newBtn} />
       {sp.anonimizado && <div className="mb-5"><Alert tone="success">Os dados pessoais do candidato foram removidos.</Alert></div>}
+      {sp.excluido && <div className="mb-5"><Alert tone="success">Candidato excluído.</Alert></div>}
       <CandidateList actor={actor} sp={sp} basePath="/candidatos" emptyAction={newBtn || undefined} />
     </>
   );

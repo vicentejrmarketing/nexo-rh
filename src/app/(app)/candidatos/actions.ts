@@ -6,7 +6,7 @@ import { requireActor } from "@/server/auth/current-user";
 import { clientInfo } from "@/server/auth/session";
 import { toActionError, ValidationError, type ActionResult } from "@/server/errors";
 import {
-  addNote, addTag, anonymizeCandidate, createCandidate, findDuplicates, linkToJob, removeTag, setOwner, setTalentPool, updateCandidate, uploadResume,
+  addNote, addTag, anonymizeCandidate, createCandidate, deleteCandidates, findDuplicates, linkToJob, removeTag, setOwner, setTalentPool, updateCandidate, uploadResume,
   type CandidateInput, type DuplicateHit, type ResumeFile,
 } from "@/server/modules/candidates/service";
 import { MAX_RESUME_BYTES } from "@/server/storage";
@@ -100,4 +100,21 @@ export async function anonymizeAction(id: string): Promise<ActionResult> {
   const r = await run((actor, ip) => anonymizeCandidate(actor, id, ip));
   if (!r.ok) return r;
   redirect("/candidatos?anonimizado=1");
+}
+
+export async function deleteCandidatesAction(ids: string[]): Promise<ActionResult<number>> {
+  try {
+    const { ip } = await clientInfo();
+    const n = await deleteCandidates(await requireActor(), ids, ip);
+    refresh();
+    return { ok: true, data: n };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+export async function deleteCandidateAction(id: string): Promise<ActionResult> {
+  const r = await deleteCandidatesAction([id]);
+  if (!r.ok) return r;
+  redirect("/candidatos?excluido=1");
 }

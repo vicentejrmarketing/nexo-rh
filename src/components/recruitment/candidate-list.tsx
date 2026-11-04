@@ -3,7 +3,8 @@ import { FilePdf, MagnifyingGlass, UsersThree } from "@phosphor-icons/react/ssr"
 import { Badge, Card, EmptyState, Input, Select, buttonClass } from "@/components/ui";
 import { Pagination } from "@/components/ui/pagination";
 import { StagePill } from "@/components/recruitment/stage-pill";
-import type { Actor } from "@/server/authz/authorize";
+import { can, type Actor } from "@/server/authz/authorize";
+import { BulkDeleteBar, SelectAll } from "./bulk-delete";
 import { candidateFilterOptions, searchCandidates, type CandidateFilters } from "@/server/modules/candidates/service";
 import { formatPhoneBR } from "@/lib/phone";
 import { formatDate } from "@/lib/format";
@@ -30,6 +31,8 @@ export async function CandidateList({ actor, sp, basePath, talentPool = false, e
   const { filters, params } = filtersFrom(sp);
   const [res, opts] = await Promise.all([searchCandidates(actor, { ...filters, talentPool }), candidateFilterOptions(actor)]);
   const filtered = Object.values(params).some(Boolean);
+  const canDelete = can(actor, "candidates.delete");
+  const formId = `bulk-${basePath.replace(/\W/g, "")}`;
 
   return (
     <Card className="min-w-0">
@@ -74,10 +77,12 @@ export async function CandidateList({ actor, sp, basePath, talentPool = false, e
         </EmptyState>
       ) : (
         <>
+          {canDelete && <BulkDeleteBar formId={formId} />}
           <div className="overflow-x-auto">
             <table className="w-full min-w-[820px] text-left text-sm">
               <thead className="border-b border-line text-[12px] tracking-wide text-muted uppercase">
                 <tr>
+                  {canDelete && <th className="w-10 py-3 pl-5"><SelectAll formId={formId} /></th>}
                   <th className="px-5 py-3 font-medium">Candidato</th>
                   <th className="px-5 py-3 font-medium">Interesse</th>
                   <th className="px-5 py-3 font-medium">Processo atual</th>
@@ -90,6 +95,11 @@ export async function CandidateList({ actor, sp, basePath, talentPool = false, e
                   const p = c.processes.find((x) => x.status === "ACTIVE") ?? c.processes[0];
                   return (
                     <tr key={c.id} className="align-top hover:bg-surface/60">
+                      {canDelete && (
+                        <td className="py-3.5 pl-5">
+                          <input type="checkbox" name="ids" value={c.id} form={formId} aria-label={`Selecionar ${c.fullName}`} className="h-4 w-4 accent-[#F5B900]" />
+                        </td>
+                      )}
                       <td className="px-5 py-3">
                         <Link href={`/candidatos/${c.id}`} className="font-semibold text-ink hover:underline hover:decoration-brand hover:decoration-2 hover:underline-offset-4">{c.fullName}</Link>
                         {c.attachments.length > 0 && <FilePdf size={15} className="ml-1.5 inline text-muted" aria-label="Tem currículo" />}

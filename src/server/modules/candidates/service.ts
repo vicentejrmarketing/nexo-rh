@@ -530,3 +530,33 @@ export async function candidateFilterOptions(actor: Actor) {
   ]);
   return { stores, positions, stages, tags };
 }
+
+// ───────── Exclusão definitiva ─────────
+
+/**
+ * Exclui candidatos de vez: cadastro, candidaturas, entrevistas, observações, etiquetas, consentimentos,
+ * conversas e currículos (arquivos apagados do armazenamento). Diferente de anonimizar, não sobra nada
+ * para os relatórios. O histórico de auditoria registra só que houve uma exclusão, sem dados pessoais.
+ */
+export async function deleteCandidates(actor: Actor, ids: string[], ip?: string | null) {
+  authorize(actor, "candidates.delete");
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (!unique.length) throw new ValidationError({ ids: ["Selecione ao menos um candidato."] });
+  if (unique.length > 100) throw new ValidationError({ ids: ["Exclua no máximo 100 candidatos por vez."] });
+  const found = await db.candidate.findMany({
+    where: { AND: [{ id: { in: unique } }, visibleCandidatesWhere(actor)] },
+    select: { id: true, desiredStoreId: true, attachments: { select: { storageKey: true } } },
+  });
+  if (found.length !== unique.length) throw new NotFoundError("Algum candidato não foi encontrado ou está fora do seu acesso.");
+  const keys = found.flatMap((c) => c.attachments.map((a) => a.storageKey));
+  await db.$transaction(async (tx) => {
+    await tx.conversation.deleteMany({ where: { candidateId: { in: unique } } });
+    await tx.candidate.deleteMany({ where: { id: { in: unique } } });
+    for (const c of found) {
+      await audit(tx, { actorId: actor.id, action: "candidate.delete", entityType: "Candidate", entityId: c.id, storeId: c.desiredStoreId, ipAddress: ip, summary: "Excluiu um candidato definitivamente" });
+    }
+  });
+  // Arquivos saem do armazenamento depois que o banco confirmou a exclusão.
+  for (const k of keys) await storage()?.remove(k).catch(() => {});
+  return found.length;
+}
