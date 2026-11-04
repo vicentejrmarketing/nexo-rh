@@ -8,7 +8,7 @@
   --color-brand: #f5b900;
   --color-brand-strong: #dca600;
   --color-brand-soft: #fff6d6;
-  --color-surface: #f5f5f7;
+  --color-surface: #f4f4f6;
   --color-line: #e6e6ea;
   --color-muted: #6b6c75;
   --color-success: #15803d;
@@ -21,7 +21,7 @@
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
-  --radius-card: 14px;
+  --radius-card: 16px;
 }
 
 html {

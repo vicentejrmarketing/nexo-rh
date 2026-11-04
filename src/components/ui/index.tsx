@@ -31,7 +31,7 @@ export function Button({ variant = "primary", size = "md", className, ...props }
 
 // ───────── Cartões ─────────
 export function Card({ className, ...props }: ComponentProps<"div">) {
-  return <div className={cn("rounded-[var(--radius-card)] border border-line bg-white", className)} {...props} />;
+  return <div className={cn("rounded-[var(--radius-card)] border border-black/[0.05] bg-white shadow-[0_2px_14px_rgba(17,18,22,0.05)]", className)} {...props} />;
 }
 
 export function CardHeader({ title, description, action }: { title: ReactNode; description?: ReactNode; action?: ReactNode }) {
@@ -47,12 +47,13 @@ export function CardHeader({ title, description, action }: { title: ReactNode; d
 }
 
 // ───────── Cabeçalho de página ─────────
-export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
+export function PageHeader({ title, description, actions }: { title: ReactNode; description?: ReactNode; actions?: ReactNode }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    // O espaço à direita fica livre para o sino e o avatar do topo.
+    <div className="mb-6 flex min-h-12 flex-wrap items-center justify-between gap-4 pr-[128px] lg:pr-[140px]">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
-        {description && <p className="mt-1 text-sm text-muted">{description}</p>}
+        <h1 className="text-[26px] font-bold tracking-tight text-ink lg:text-[30px]">{title}</h1>
+        {description && <p className="mt-0.5 text-[15px] font-medium text-ink/70">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>

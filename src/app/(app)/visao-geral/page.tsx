@@ -1,16 +1,23 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Suspense } from "react";
-import { CalendarCheck, CheckCircle2, MessageCircle, UserCheck, Users } from "lucide-react";
-import { Alert, Card, CardHeader, EmptyState, PageHeader, PageSkeleton, buttonClass } from "@/components/ui";
+import { ChartBar, ChartPieSlice, ClockCounterClockwise, Funnel as FunnelIcon, UsersThree } from "@phosphor-icons/react/ssr";
+import { Alert, PageHeader, PageSkeleton } from "@/components/ui";
 import { NoPermission } from "@/components/layout/states";
+import { KpiCard } from "@/components/dashboard/kpi-card";
+import { PerformanceChart } from "@/components/dashboard/performance-chart";
+import { DashboardFilter, ParamSelect } from "@/components/dashboard/filters";
+import { ActivityList, FollowUpTable, FootprintBanner, Funnel, JobsDonut, Panel, SeeAll, StoreBarLabels, StoreBars } from "@/components/dashboard/widgets";
 import { requirePageActor } from "@/server/auth/current-user";
 import { can } from "@/server/authz/authorize";
-import { getHeadlineKpis } from "@/server/modules/dashboard/service";
-import { listActivity } from "@/server/modules/audit/service";
-import { formatDateTime } from "@/lib/format";
+import {
+  getFilterOptions, getFollowUps, getFootprint, getFunnel, getJobsByStatus, getKpis, getPerformance, getRecentActivity, getStoreRanking,
+} from "@/server/modules/dashboard/service";
+import { greetingSP, resolvePeriod } from "@/lib/period";
 
 export const metadata: Metadata = { title: "Visão Geral" };
+
+type SP = PageProps<"/visao-geral">["searchParams"];
+const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
 export default function OverviewPage({ searchParams }: PageProps<"/visao-geral">) {
   return (
@@ -20,116 +27,98 @@ export default function OverviewPage({ searchParams }: PageProps<"/visao-geral">
   );
 }
 
-async function Overview({ searchParams }: { searchParams: PageProps<"/visao-geral">["searchParams"] }) {
+async function Overview({ searchParams }: { searchParams: SP }) {
   const actor = await requirePageActor();
   if (!can(actor, "dashboard.view")) return <NoPermission />;
-  const params = await searchParams;
-  const kpis = await getHeadlineKpis(actor);
+  const sp = await searchParams;
 
-  const cards = [
-    { label: "Candidatos cadastrados", value: kpis.candidates, icon: Users, highlight: true },
-    { label: "Conversas iniciadas", value: kpis.conversations, icon: MessageCircle },
-    { label: "Entrevistas agendadas", value: kpis.interviews, icon: CalendarCheck },
-    { label: "Aprovados", value: kpis.approved, icon: CheckCircle2 },
-    { label: "Contratações realizadas", value: kpis.hired, icon: UserCheck },
-  ];
+  const period = resolvePeriod(one(sp.periodo), { de: one(sp.de), ate: one(sp.ate) });
+  const filters = { storeId: one(sp.loja), recruiterId: one(sp.recrutador) };
+  const chartDays = ["7", "30", "90"].includes(one(sp.grafico) ?? "") ? Number(one(sp.grafico)) : 30;
+  const topStores = one(sp.lojas) === "10" ? 10 : 5;
+
+  const [options, kpis, performance, funnel, jobs, storeRanking, activity, followUps, footprint] = await Promise.all([
+    getFilterOptions(actor),
+    getKpis(actor, period, filters),
+    getPerformance(actor, chartDays, filters),
+    getFunnel(actor, null, filters),
+    getJobsByStatus(actor, filters),
+    getStoreRanking(actor, period, filters, topStores),
+    getRecentActivity(actor, 5),
+    getFollowUps(actor, filters, 5),
+    getFootprint(actor),
+  ]);
+
+  const firstName = actor.name.split(" ").slice(0, 2).join(" ");
+  const subtitle = period.key === "hoje" ? "Confira o resumo do seu recrutamento de hoje" : `Confira o resumo do seu recrutamento · ${period.label.toLowerCase()}`;
 
   return (
     <>
       <PageHeader
-        title={`Olá, ${actor.name.split(" ")[0]}`}
-        description={actor.allStores ? "Indicadores de todas as lojas." : `Indicadores das suas ${actor.storeIds.length} loja(s) autorizada(s).`}
+        title={
+          <>
+            {greetingSP()}, {firstName}! <span aria-hidden="true">👋</span>
+          </>
+        }
+        description={subtitle}
+        actions={<DashboardFilter label={period.label} stores={options.stores} recruiters={options.recruiters} />}
       />
-      {params.senha === "alterada" && (
-        <div className="mb-6">
+      {sp.senha === "alterada" && (
+        <div className="mb-5">
           <Alert tone="success">Senha alterada. As suas outras sessões foram encerradas.</Alert>
         </div>
       )}
 
-      <section aria-label="Indicadores" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        {cards.map(({ label, value, icon: Icon, highlight }) => (
-          <Card key={label} className={highlight ? "border-ink bg-ink text-white" : undefined}>
-            <div className="flex items-start justify-between p-5">
-              <div>
-                <p className={highlight ? "text-[13px] text-white/60" : "text-[13px] text-muted"}>{label}</p>
-                <p className="tabular mt-2 text-3xl font-semibold tracking-tight">{value.toLocaleString("pt-BR")}</p>
-              </div>
-              <span className={highlight ? "flex h-9 w-9 items-center justify-center rounded-lg bg-brand text-ink" : "flex h-9 w-9 items-center justify-center rounded-lg bg-brand-soft text-ink"}>
-                <Icon size={18} />
-              </span>
-            </div>
-          </Card>
+      {/* Quatro cartões como na referência; as contratações aparecem no gráfico de desempenho e no funil. */}
+      <section aria-label="Indicadores" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {kpis.filter((k) => k.key !== "hired").map((k) => (
+          <KpiCard key={k.key} kpi={k} />
         ))}
       </section>
-      <p className="mt-2 text-[12.5px] text-muted">Contagem total no banco, dentro do seu acesso. Filtros por período, loja e recrutador chegam na Etapa 6.</p>
 
-      <div className="mt-6 grid gap-4 xl:grid-cols-[1fr_420px]">
-        <Card>
-          <CardHeader title="Gráficos de desempenho" description="Desempenho geral, evolução, funil, lojas e recrutadores." />
-          <EmptyState title="Os gráficos aparecem quando houver processos registrados">
-            Eles serão calculados a partir das vagas, inscrições e movimentações do funil (Etapa 6). Nenhum número é estimado ou fixo.
-          </EmptyState>
-        </Card>
-        <Suspense fallback={<Card className="h-80" />}>
-          <RecentActivity />
-        </Suspense>
+      <div className="mt-5 grid gap-5 xl:grid-cols-[1.45fr_1fr]">
+        <Panel
+          title="Desempenho Geral"
+          icon={ChartBar}
+          action={<ParamSelect param="grafico" label="Período do gráfico" value={String(chartDays)} options={[["7", "Últimos 7 dias"], ["30", "Últimos 30 dias"], ["90", "Últimos 90 dias"]]} />}
+        >
+          <PerformanceChart data={performance} />
+        </Panel>
+        <Panel title="Funil de Recrutamento" icon={FunnelIcon}>
+          <Funnel rows={funnel} />
+          <p className="mt-3 text-[12px] text-muted">Processos que chegaram a cada etapa, em relação aos inscritos.</p>
+        </Panel>
       </div>
 
-      {can(actor, "users.manage") && (
-        <Card className="mt-6">
-          <CardHeader title="Primeiros passos" description="O que já pode ser feito nesta etapa." />
-          <ol className="grid gap-px overflow-hidden rounded-b-[var(--radius-card)] bg-line sm:grid-cols-3">
-            <li className="bg-white p-5">
-              <p className="text-[12px] font-semibold tracking-wide text-muted uppercase">Agora</p>
-              <p className="mt-1 font-medium">Cadastrar a equipe</p>
-              <p className="mt-1 text-[13px] text-muted">Crie os usuários com perfil e lojas. Cada um recebe uma senha temporária.</p>
-              <Link href="/configuracoes/usuarios" className={`${buttonClass("primary", "sm")} mt-3`}>Abrir usuários</Link>
-            </li>
-            <li className="bg-white p-5">
-              <p className="text-[12px] font-semibold tracking-wide text-muted uppercase">Etapa 2</p>
-              <p className="mt-1 font-medium">Lojas, vagas e candidatos</p>
-              <p className="mt-1 text-[13px] text-muted">Depois das lojas cadastradas, volte aos usuários para vincular cada pessoa às suas unidades.</p>
-            </li>
-            <li className="bg-white p-5">
-              <p className="text-[12px] font-semibold tracking-wide text-muted uppercase">Etapa 4</p>
-              <p className="mt-1 font-medium">WhatsApp oficial</p>
-              <p className="mt-1 text-[13px] text-muted">Conexão com a Meta Cloud API. Até lá, o status aparece como “Não conectado”.</p>
-            </li>
-          </ol>
-        </Card>
-      )}
-    </>
-  );
-}
+      <div className="mt-5 grid gap-5 lg:grid-cols-2 xl:grid-cols-[0.8fr_1fr_1.05fr]">
+        <Panel title="Vagas por Status" icon={ChartPieSlice}>
+          <JobsDonut {...jobs} />
+        </Panel>
+        <Panel
+          title="Desempenho por Loja"
+          icon={ChartBar}
+          action={<ParamSelect param="lojas" label="Quantidade de lojas" value={String(topStores)} options={[["5", "Top 5"], ["10", "Top 10"]]} />}
+        >
+          <StoreBars rows={storeRanking} />
+          {storeRanking.length > 0 && <StoreBarLabels rows={storeRanking} />}
+          <p className="mt-2 text-[12px] text-muted">Contratações no período · {period.label.toLowerCase()}</p>
+        </Panel>
+        <Panel
+          title="Atividades Recentes"
+          icon={ClockCounterClockwise}
+          className="border-brand/20 bg-brand-soft lg:col-span-2 xl:col-span-1"
+          action={can(actor, "audit.view") ? <SeeAll href="/configuracoes/auditoria">Ver todas</SeeAll> : undefined}
+        >
+          <ActivityList items={activity} />
+        </Panel>
+      </div>
 
-async function RecentActivity() {
-  const actor = await requirePageActor();
-  if (!can(actor, "audit.view")) {
-    return (
-      <Card>
-        <CardHeader title="Atividades recentes" />
-        <EmptyState title="Disponível para gestores">O histórico completo é visível para Gestores de RH e Administradores.</EmptyState>
-      </Card>
-    );
-  }
-  const { items } = await listActivity(actor, { page: 1 });
-  return (
-    <Card>
-      <CardHeader
-        title="Atividades recentes"
-        action={<Link href="/configuracoes/auditoria" className="text-[13px] font-medium text-ink underline decoration-brand decoration-2 underline-offset-4">Ver tudo</Link>}
-      />
-      <ul className="divide-y divide-line">
-        {items.slice(0, 8).map((a) => (
-          <li key={a.id} className="px-5 py-3">
-            <p className="text-[13.5px] text-ink">{a.summary}</p>
-            <p className="mt-0.5 text-[12px] text-muted">
-              {a.actor?.name ?? "Sistema"} · {formatDateTime(a.createdAt)}
-            </p>
-          </li>
-        ))}
-      </ul>
-      {items.length === 0 && <EmptyState title="Nenhuma atividade ainda" />}
-    </Card>
+      <div className="mt-5 grid gap-5 xl:grid-cols-[1.75fr_1fr]">
+        <Panel title="Candidatos em Acompanhamento" icon={UsersThree} action={<SeeAll href="/candidatos">Ver todos os candidatos</SeeAll>}>
+          <FollowUpTable rows={followUps} canEdit={can(actor, "candidates.update")} />
+        </Panel>
+        <FootprintBanner {...footprint} />
+      </div>
+    </>
   );
 }
