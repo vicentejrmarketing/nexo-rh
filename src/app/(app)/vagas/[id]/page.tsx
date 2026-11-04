@@ -10,11 +10,12 @@ import { Panel } from "@/components/dashboard/widgets";
 import { StagePill } from "@/components/recruitment/stage-pill";
 import { requirePageActor } from "@/server/auth/current-user";
 import { can } from "@/server/authz/authorize";
-import { JOB_STATUS_LABEL, PRIORITY_LABEL, getJob } from "@/server/modules/jobs/service";
+import { CONTRACT_LABEL, JOB_STATUS_LABEL, PRIORITY_LABEL, getJob } from "@/server/modules/jobs/service";
+import { CopyJobLink, ViewOnSite } from "@/components/portal/site-controls";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { formatMoneyBR } from "@/lib/form";
 import { formatPhoneBR } from "@/lib/phone";
-import { deleteJobAction } from "../actions";
+import { deleteJobAction, jobStatusAction } from "../actions";
 import { DuplicateJobButton, JobStatusButtons, LinkCandidateBox } from "../job-controls";
 
 export const metadata: Metadata = { title: "Vaga" };
@@ -44,7 +45,7 @@ function salary(j: { salaryMin: unknown; salaryMax: unknown; salaryText: string 
   return [range, j.salaryText].filter(Boolean).join(" · ") || "Não informado";
 }
 
-const STATUS_TONE = { OPEN: "success", PAUSED: "warning", DRAFT: "neutral", CLOSED: "neutral" } as const;
+const STATUS_TONE = { OPEN: "success", PAUSED: "warning", DRAFT: "neutral", CLOSED: "neutral", CANCELED: "danger" } as const;
 
 async function Content({ params, searchParams }: { params: PageProps<"/vagas/[id]">["params"]; searchParams: PageProps<"/vagas/[id]">["searchParams"] }) {
   const actor = await requirePageActor();
@@ -74,6 +75,12 @@ async function Content({ params, searchParams }: { params: PageProps<"/vagas/[id
             {data.canEdit && <JobStatusButtons id={job.id} status={job.status} />}
             {data.canEdit && <Link href={`/vagas/${job.id}/editar`} className={buttonClass("secondary")}><PencilSimple size={17} /> Editar</Link>}
             {data.canCreate && <DuplicateJobButton id={job.id} />}
+            {job.publishedOnline && ["OPEN", "PAUSED", "CLOSED"].includes(job.status) && (
+              <>
+                <ViewOnSite slug={job.slug} size="md" />
+                <CopyJobLink slug={job.slug} size="md" />
+              </>
+            )}
           </>
         }
       />
@@ -117,12 +124,18 @@ async function Content({ params, searchParams }: { params: PageProps<"/vagas/[id
                 { label: "Responsável", value: job.recruiter?.name ?? "Sem responsável" },
                 { label: "Salário", value: salary(job) },
                 { label: "Posições", value: job.openings },
-                { label: "Portal de vagas", value: job.publishedOnline ? "Publicar" : "Não publicar" },
+                { label: "Contratação", value: CONTRACT_LABEL[job.contractType] },
+                {
+                  label: "Site de vagas",
+                  value: !job.publishedOnline ? "Fora do site" : job.status === "OPEN" ? `No ar${job.publishedAt ? ` desde ${formatDate(job.publishedAt)}` : ""}` : "Publicada, mas sem aceitar inscrições (vaga não está aberta)",
+                },
+                { label: "Salário no site", value: job.showSalary ? "Mostrar" : "Ocultar" },
                 { label: "Criada por", value: `${job.createdBy?.name ?? "—"} em ${formatDate(job.createdAt)}` },
               ]}
             />
             <div className="mt-5 flex flex-col gap-4 text-[14px] leading-relaxed">
               <div><p className="mb-1 text-[12px] font-semibold tracking-wide text-muted uppercase">Descrição</p><p className="whitespace-pre-line">{job.description}</p></div>
+              {job.responsibilities && <div><p className="mb-1 text-[12px] font-semibold tracking-wide text-muted uppercase">Responsabilidades</p><p className="whitespace-pre-line">{job.responsibilities}</p></div>}
               {job.requirements && <div><p className="mb-1 text-[12px] font-semibold tracking-wide text-muted uppercase">Requisitos</p><p className="whitespace-pre-line">{job.requirements}</p></div>}
               {job.benefits && <div><p className="mb-1 text-[12px] font-semibold tracking-wide text-muted uppercase">Benefícios</p><p className="whitespace-pre-line">{job.benefits}</p></div>}
             </div>
@@ -148,6 +161,12 @@ async function Content({ params, searchParams }: { params: PageProps<"/vagas/[id
             </ul>
             <p className="mt-4 text-[12px] text-muted">Mover candidatos entre etapas chega com o Funil, na Etapa 3.</p>
           </Panel>
+          {data.canEdit && ["DRAFT", "OPEN", "PAUSED"].includes(job.status) && (
+            <Panel title="Cancelar vaga" icon={Trash}>
+              <p className="mb-3 text-[13px] text-muted">Para vagas que não vão mais acontecer: sai do site e da lista de vagas em andamento. Os candidatos e o histórico ficam guardados.</p>
+              <ConfirmAction label="Cancelar vaga" size="sm" variant="secondary" question="Cancelar esta vaga? Ela some do site e para de aceitar inscrições." confirmLabel="Cancelar vaga" action={jobStatusAction.bind(null, job.id, "CANCELED")} />
+            </Panel>
+          )}
           {data.canDelete && (
             <Panel title="Excluir vaga" icon={Trash}>
               {stats.applicants > 0 ? (

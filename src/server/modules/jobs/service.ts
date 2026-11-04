@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import type { JobStatus, Prisma } from "@/generated/prisma/client";
+import type { ContractType, JobStatus, Prisma } from "@/generated/prisma/client";
 import { db } from "@/server/db/client";
 import { audit } from "@/server/audit/log";
 import { authorize, canAccessStore, type Actor } from "@/server/authz/authorize";
@@ -12,7 +12,10 @@ import { parseMoneyBR } from "@/lib/form";
 import { jobSlug } from "@/lib/text";
 import { parseDateSP } from "@/lib/period";
 
-export const JOB_STATUS_LABEL: Record<JobStatus, string> = { DRAFT: "Rascunho", OPEN: "Aberta", PAUSED: "Pausada", CLOSED: "Encerrada" };
+export const JOB_STATUS_LABEL: Record<JobStatus, string> = { DRAFT: "Rascunho", OPEN: "Aberta", PAUSED: "Pausada", CLOSED: "Encerrada", CANCELED: "Cancelada" };
+export const CONTRACT_LABEL: Record<ContractType, string> = {
+  CLT: "CLT (efetivo)", INTERNSHIP: "Estágio", TEMPORARY: "Temporário", APPRENTICE: "Jovem Aprendiz", PJ: "PJ", PART_TIME: "Meio período",
+};
 export const PRIORITY_LABEL = { LOW: "Baixa", MEDIUM: "Média", HIGH: "Alta", URGENT: "Urgente" } as const;
 
 const money = z
@@ -45,6 +48,9 @@ const jobSchema = z
     title: z.string().trim().min(3, "Informe o nome da vaga.").max(120),
     description: z.string().trim().min(10, "Descreva a vaga (mínimo 10 caracteres).").max(10000),
     requirements: z.string().trim().max(5000).optional().transform((v) => v || null),
+    responsibilities: z.string().trim().max(5000).optional().transform((v) => v || null),
+    contractType: z.enum(["CLT", "INTERNSHIP", "TEMPORARY", "APPRENTICE", "PJ", "PART_TIME"], "Selecione o tipo de contratação.").default("CLT"),
+    showSalary: z.string().optional().transform((v) => v === "on" || v === "true"),
     salaryMin: money,
     salaryMax: money,
     salaryText: z.string().trim().max(80).optional().transform((v) => v || null),
@@ -76,7 +82,7 @@ export async function listJobs(actor: Actor, f: { q?: string; status?: string; s
   const and: Prisma.JobWhereInput[] = [visibleJobsWhere(actor)];
   if (f.q?.trim()) and.push({ OR: [{ title: { contains: f.q.trim(), mode: "insensitive" } }, { city: { contains: f.q.trim(), mode: "insensitive" } }] });
   if (f.status && f.status in JOB_STATUS_LABEL) and.push({ status: f.status as JobStatus });
-  else and.push({ status: { not: "CLOSED" } }); // padrão: o que está em andamento
+  else and.push({ status: { notIn: ["CLOSED", "CANCELED"] } }); // padrão: o que está em andamento
   if (f.storeId) and.push({ storeId: f.storeId });
   if (f.recruiterId) and.push({ recruiterId: f.recruiterId });
   if (f.priority && f.priority in PRIORITY_LABEL) and.push({ priority: f.priority as keyof typeof PRIORITY_LABEL });
@@ -174,6 +180,7 @@ export async function createJob(actor: Actor, raw: JobInput, ip?: string | null)
       data: {
         ...data, city: data.city || store.city, slug: jobSlug(data.title, data.city || store.city), status: finalStatus,
         openedAt: finalStatus === "OPEN" ? new Date() : null, createdById: actor.id,
+        publishedAt: finalStatus === "OPEN" && data.publishedOnline ? new Date() : null,
       },
     });
     await audit(tx, {
@@ -199,7 +206,10 @@ export async function updateJob(actor: Actor, id: string, raw: JobInput, ip?: st
   const { status: _ignored, ...data } = parsed.data;
   const store = await validateRefs(actor, data);
   return db.$transaction(async (tx) => {
-    const job = await tx.job.update({ where: { id }, data: { ...data, city: data.city || store.city } });
+    const job = await tx.job.update({
+      where: { id },
+      data: { ...data, city: data.city || store.city, publishedAt: publishedAtFor({ status: before.status, publishedOnline: data.publishedOnline, publishedAt: before.publishedAt }) },
+    });
     await audit(tx, {
       actorId: actor.id, action: "job.update", entityType: "Job", entityId: id, storeId: job.storeId, ipAddress: ip,
       summary: `Atualizou a vaga ${job.title}`, before: auditData(before), after: auditData(job),
@@ -209,8 +219,16 @@ export async function updateJob(actor: Actor, id: string, raw: JobInput, ip?: st
 }
 
 // Transições permitidas: rascunho→aberta; aberta⇄pausada; aberta/pausada→encerrada; encerrada→aberta (reabrir).
-const TRANSITIONS: Record<JobStatus, JobStatus[]> = { DRAFT: ["OPEN"], OPEN: ["PAUSED", "CLOSED"], PAUSED: ["OPEN", "CLOSED"], CLOSED: ["OPEN"] };
-const VERB: Record<JobStatus, string> = { OPEN: "Abriu", PAUSED: "Pausou", CLOSED: "Encerrou", DRAFT: "Voltou para rascunho" };
+// Cancelada: vaga que não vai mais acontecer (some do site); pode voltar a rascunho.
+const TRANSITIONS: Record<JobStatus, JobStatus[]> = {
+  DRAFT: ["OPEN", "CANCELED"], OPEN: ["PAUSED", "CLOSED", "CANCELED"], PAUSED: ["OPEN", "CLOSED", "CANCELED"], CLOSED: ["OPEN"], CANCELED: ["DRAFT"],
+};
+const VERB: Record<JobStatus, string> = { OPEN: "Abriu", PAUSED: "Pausou", CLOSED: "Encerrou", DRAFT: "Voltou para rascunho", CANCELED: "Cancelou" };
+
+/** Data da primeira publicação: quando a vaga fica aberta E marcada para o site. */
+export function publishedAtFor(j: { status: JobStatus; publishedOnline: boolean; publishedAt: Date | null }): Date | null | undefined {
+  return j.status === "OPEN" && j.publishedOnline && !j.publishedAt ? new Date() : undefined;
+}
 
 export async function setJobStatus(actor: Actor, id: string, status: JobStatus, ip?: string | null) {
   authorize(actor, "jobs.update");
@@ -225,7 +243,8 @@ export async function setJobStatus(actor: Actor, id: string, status: JobStatus, 
       data: {
         status,
         openedAt: status === "OPEN" && !job.openedAt ? new Date() : undefined,
-        closedAt: status === "CLOSED" ? new Date() : status === "OPEN" ? null : undefined,
+        closedAt: status === "CLOSED" || status === "CANCELED" ? new Date() : status === "OPEN" ? null : undefined,
+        publishedAt: publishedAtFor({ status, publishedOnline: job.publishedOnline, publishedAt: job.publishedAt }),
       },
     });
     await audit(tx, {
@@ -247,6 +266,7 @@ export async function duplicateJob(actor: Actor, id: string, ip?: string | null)
         title: src.title, description: src.description, requirements: src.requirements, salaryMin: src.salaryMin, salaryMax: src.salaryMax,
         salaryText: src.salaryText, benefits: src.benefits, openings: src.openings, storeId: src.storeId, positionId: src.positionId,
         city: src.city, recruiterId: src.recruiterId, priority: src.priority, publishedOnline: src.publishedOnline,
+        contractType: src.contractType, responsibilities: src.responsibilities, showSalary: src.showSalary,
         status: "DRAFT", slug: jobSlug(src.title, src.city), createdById: actor.id,
       },
     });
@@ -271,5 +291,23 @@ export async function deleteJob(actor: Actor, id: string, ip?: string | null) {
       actorId: actor.id, action: "job.delete", entityType: "Job", entityId: id, storeId: job.storeId, ipAddress: ip,
       summary: `Excluiu a vaga ${job.title}`, before: auditData(job),
     });
+  });
+}
+
+/** Publica ou retira a vaga do site de vagas (independente do status administrativo). */
+export async function setJobPublished(actor: Actor, id: string, published: boolean, ip?: string | null) {
+  authorize(actor, "jobs.update");
+  const job = await loadEditable(actor, id);
+  if (job.publishedOnline === published) return job;
+  return db.$transaction(async (tx) => {
+    const updated = await tx.job.update({
+      where: { id },
+      data: { publishedOnline: published, publishedAt: publishedAtFor({ status: job.status, publishedOnline: published, publishedAt: job.publishedAt }) },
+    });
+    await audit(tx, {
+      actorId: actor.id, action: published ? "job.publish" : "job.unpublish", entityType: "Job", entityId: id, storeId: job.storeId, ipAddress: ip,
+      summary: `${published ? "Publicou" : "Retirou"} a vaga ${job.title} ${published ? "no" : "do"} site`,
+    });
+    return updated;
   });
 }

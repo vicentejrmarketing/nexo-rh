@@ -29,6 +29,22 @@ enum JobStatus {
   OPEN
   PAUSED
   CLOSED
+  CANCELED
+}
+
+enum ContractType {
+  CLT
+  INTERNSHIP
+  TEMPORARY
+  APPRENTICE
+  PJ
+  PART_TIME
+}
+
+enum PrivacyRequestStatus {
+  OPEN
+  DONE
+  REJECTED
 }
 
 enum JobPriority {
@@ -207,6 +223,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   activityLogs        ActivityLog[]
   notifications       Notification[]
+  privacyHandled      PrivacyRequest[]    @relation("PrivacyHandledBy")
   managedStores       Store[]               @relation("StoreManager")
   recruiterJobs       Job[]                 @relation("JobRecruiter")
   createdJobs         Job[]                 @relation("JobCreatedBy")
@@ -291,9 +308,49 @@ model CompanySettings {
   privacyVersion String?
   retentionDays  Int      @default(730)
   stalledDays    Int      @default(3)
+  // Portal de vagas (personalização)
+  siteTitle      String?
+  siteIntro      String?
+  siteLogoKey    String? // arquivo no armazenamento privado, servido pelo sistema
+  siteBannerKey  String?
+  siteContactEmail String?
+  siteContactWhatsapp String?
   updatedAt      DateTime @updatedAt
 
   @@map("company_settings")
+}
+
+/// Pedido de exclusão/acesso de dados feito pelo titular no site (LGPD).
+model PrivacyRequest {
+  id          String               @id @default(cuid())
+  fullName    String
+  phoneE164   String?
+  email       String?
+  message     String?
+  candidateId String? // cadastro encontrado pelo telefone/e-mail, se houver
+  status      PrivacyRequestStatus @default(OPEN)
+  handledById String?
+  handledAt   DateTime?
+  ipAddress   String?
+  createdAt   DateTime             @default(now())
+
+  candidate Candidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  handledBy User?      @relation("PrivacyHandledBy", fields: [handledById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([candidateId])
+  @@index([handledById])
+  @@map("privacy_requests")
+}
+
+/// Contador de envios públicos (inscrições, pedidos) para limitar spam. Chaves são hashes, nunca IP em claro.
+model RateLimitHit {
+  id        String   @id @default(cuid())
+  bucket    String // ex.: "apply:ip:<hash>"
+  createdAt DateTime @default(now())
+
+  @@index([bucket, createdAt])
+  @@map("rate_limit_hits")
 }
 
 model Store {
@@ -325,6 +382,7 @@ model Position {
   id                  String      @id @default(cuid())
   name                String      @unique
   description         String?
+  area                String? // área profissional, usada no filtro do site
   active              Boolean     @default(true)
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
@@ -357,6 +415,10 @@ model Job {
   expectedCloseAt  DateTime?
   closedAt         DateTime?
   publishedOnline  Boolean     @default(true)
+  publishedAt      DateTime? // primeira vez que ficou visível no site
+  contractType     ContractType @default(CLT)
+  responsibilities String?
+  showSalary       Boolean     @default(true)
   createdById      String?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
@@ -374,6 +436,7 @@ model Job {
   @@index([storeId])
   @@index([positionId])
   @@index([createdById])
+  @@index([publishedOnline, status, publishedAt])
   @@map("jobs")
 }
 
@@ -410,6 +473,7 @@ model Candidate {
   tags            CandidateTag[]
   notes           CandidateNote[]
   conversations   Conversation[]
+  privacyRequests PrivacyRequest[]
 
   @@index([phoneE164])
   @@index([whatsappE164])
@@ -436,8 +500,9 @@ model Attachment {
   createdAt    DateTime       @default(now())
   deletedAt    DateTime?
 
-  candidate  Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  uploadedBy User?     @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  candidate    Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  uploadedBy   User?          @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  applications CandidateJob[] @relation("ApplicationResume")
 
   @@index([candidateId, kind])
   @@index([uploadedById])
@@ -489,9 +554,12 @@ model CandidateConsent {
   userAgent     String?
   grantedAt     DateTime       @default(now())
   revokedAt     DateTime?
+  candidateJobId String? // inscrição em que o consentimento foi dado
   candidate     Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  candidateJob  CandidateJob?  @relation(fields: [candidateJobId], references: [id], onDelete: SetNull)
 
   @@index([candidateId, purpose])
+  @@index([candidateJobId])
   @@map("candidate_consents")
 }
 
@@ -527,8 +595,17 @@ model CandidateJob {
   lastMovedAt DateTime        @default(now())
   hiredAt     DateTime?
   closedAt    DateTime?
+  // Dados enviados nesta inscrição (independentes do cadastro geral do candidato)
+  salaryExpectation Decimal? @db.Decimal(10, 2)
+  currentlyEmployed Boolean?
+  resumeId          String?
+  applicantMessage  String?
+  ipAddress         String?
+  userAgent         String?
 
   candidate  Candidate        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  resume     Attachment?      @relation("ApplicationResume", fields: [resumeId], references: [id], onDelete: SetNull)
+  consents   CandidateConsent[]
   job        Job              @relation(fields: [jobId], references: [id], onDelete: Cascade)
   stage      RecruitmentStage @relation(fields: [stageId], references: [id])
   recruiter  User?            @relation("ProcessRecruiter", fields: [recruiterId], references: [id], onDelete: SetNull)
@@ -541,6 +618,7 @@ model CandidateJob {
   @@index([recruiterId, status])
   @@index([status, appliedAt])
   @@index([hiredAt])
+  @@index([resumeId])
   @@map("candidate_jobs")
 }
 

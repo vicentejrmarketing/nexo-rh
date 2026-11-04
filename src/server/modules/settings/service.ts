@@ -6,23 +6,31 @@ import { audit } from "@/server/audit/log";
 import { authorize, type Actor } from "@/server/authz/authorize";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/server/errors";
 import { fieldErrorsOf } from "@/server/modules/users/schemas";
+import { toE164BR } from "@/lib/phone";
 
 // ───────── Cargos ─────────
 
 const positionSchema = z.object({
   name: z.string().trim().min(2, "Informe o nome do cargo.").max(80, "Nome muito longo."),
   description: z.string().trim().max(500).optional().transform((v) => v || null),
+  area: z.string().trim().max(60, "Área muito longa.").optional().transform((v) => (v ? v.replace(/\s+/g, " ") : null)),
 });
+
+/** Áreas já usadas nos cargos (sugestões no cadastro). */
+export async function listAreas() {
+  const rows = await db.position.findMany({ where: { area: { not: null } }, select: { area: true }, distinct: ["area"], orderBy: { area: "asc" } });
+  return rows.map((r) => r.area!).filter(Boolean);
+}
 
 export async function listPositions(opts: { activeOnly?: boolean } = {}) {
   return db.position.findMany({
     where: opts.activeOnly ? { active: true } : {},
     orderBy: [{ active: "desc" }, { name: "asc" }],
-    select: { id: true, name: true, description: true, active: true, _count: { select: { jobs: true, desiredByCandidates: true } } },
+    select: { id: true, name: true, description: true, area: true, active: true, _count: { select: { jobs: true, desiredByCandidates: true } } },
   });
 }
 
-export async function savePosition(actor: Actor, id: string | null, raw: { name: string; description?: string }) {
+export async function savePosition(actor: Actor, id: string | null, raw: { name: string; description?: string; area?: string }) {
   authorize(actor, "settings.manage");
   const parsed = positionSchema.safeParse(raw);
   if (!parsed.success) throw new ValidationError(fieldErrorsOf(parsed.error));
@@ -36,7 +44,7 @@ export async function savePosition(actor: Actor, id: string | null, raw: { name:
       await audit(tx, {
         actorId: actor.id, action: id ? "position.update" : "position.create", entityType: "Position", entityId: pos.id,
         summary: id ? `Atualizou o cargo ${pos.name}` : `Criou o cargo ${pos.name}`,
-        before: before ? { name: before.name } : undefined, after: { name: pos.name },
+        before: before ? { name: before.name, area: before.area } : undefined, after: { name: pos.name, area: pos.area },
       });
       return pos;
     });
@@ -91,6 +99,18 @@ const companySchema = z.object({
   privacyPolicy: z.string().trim().max(20000).optional().transform((v) => v || null),
   retentionMonths: z.coerce.number().int("Use um número inteiro de meses.").min(6, "Mínimo de 6 meses.").max(60, "Máximo de 60 meses."),
   stalledDays: z.coerce.number().int().min(1, "Mínimo de 1 dia.").max(60, "Máximo de 60 dias."),
+  siteTitle: z.string().trim().max(90, "Título muito longo.").optional().transform((v) => v || null),
+  siteIntro: z.string().trim().max(400, "Texto muito longo (máx. 400).").optional().transform((v) => v || null),
+  siteContactEmail: z.union([z.literal(""), z.email("E-mail inválido.")]).optional().transform((v) => v || null),
+  siteContactWhatsapp: z.string().optional().transform((v, ctx) => {
+    if (!v?.trim()) return null;
+    const e = toE164BR(v);
+    if (!e) {
+      ctx.addIssue({ code: "custom", message: "WhatsApp inválido. Use DDD + número." });
+      return z.NEVER;
+    }
+    return e;
+  }),
 });
 
 export async function getCompanySettings() {

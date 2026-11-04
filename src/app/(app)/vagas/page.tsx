@@ -21,7 +21,7 @@ export default function JobsPage({ searchParams }: PageProps<"/vagas">) {
   );
 }
 
-const STATUS_TONE = { OPEN: "success", PAUSED: "warning", DRAFT: "neutral", CLOSED: "neutral" } as const;
+const STATUS_TONE = { OPEN: "success", PAUSED: "warning", DRAFT: "neutral", CLOSED: "neutral", CANCELED: "danger" } as const;
 
 async function Content({ searchParams }: { searchParams: PageProps<"/vagas">["searchParams"] }) {
   const actor = await requirePageActor();

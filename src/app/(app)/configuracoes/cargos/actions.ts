@@ -9,7 +9,7 @@ import { formValues, nextSubmission, str, type FormState } from "@/lib/form";
 export async function savePositionAction(id: string | null, prev: FormState, fd: FormData): Promise<FormState> {
   const values = formValues(fd);
   try {
-    await savePosition(await requireActor(), id, { name: str(values, "name"), description: str(values, "description") });
+    await savePosition(await requireActor(), id, { name: str(values, "name"), description: str(values, "description"), area: str(values, "area") });
     refresh();
     return { ok: true, message: id ? "Cargo atualizado." : "Cargo criado.", submission: nextSubmission(prev) };
   } catch (e) {

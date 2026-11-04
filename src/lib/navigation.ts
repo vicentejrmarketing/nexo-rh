@@ -7,9 +7,13 @@ export type NavItem = {
   /** Basta uma das permissões para o item aparecer. */
   anyOf: PermissionKey[];
   badge?: "messages";
+  /** Abre em nova aba (ex.: o site público de vagas). */
+  external?: boolean;
+  /** Atalho secundário ao lado do item (ex.: gerenciar publicação). */
+  manageHref?: string;
 };
 
-export type NavIcon = "home" | "jobs" | "candidates" | "funnel" | "talent" | "interviews" | "messages" | "stores" | "reports" | "settings";
+export type NavIcon = "home" | "jobs" | "candidates" | "funnel" | "talent" | "interviews" | "messages" | "stores" | "reports" | "settings" | "site";
 
 export const NAV_ITEMS: NavItem[] = [
   { href: "/visao-geral", label: "Visão Geral", icon: "home", anyOf: ["dashboard.view"] },
@@ -21,6 +25,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/mensagens", label: "Mensagens", icon: "messages", anyOf: ["messages.view"], badge: "messages" },
   { href: "/lojas", label: "Lojas", icon: "stores", anyOf: ["stores.view"] },
   { href: "/relatorios", label: "Relatórios", icon: "reports", anyOf: ["reports.view"] },
+  { href: "/trabalhe-conosco", label: "Ver site", icon: "site", anyOf: ["jobs.view"], external: true, manageHref: "/site-de-vagas" },
   {
     href: "/configuracoes",
     label: "Configurações",

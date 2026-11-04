@@ -7,9 +7,9 @@ import { ConfirmAction } from "@/components/ui/confirm-action";
 import { pick, type FormState } from "@/lib/form";
 import { deletePositionAction, savePositionAction, togglePositionAction } from "./actions";
 
-type Position = { id: string; name: string; description: string | null; active: boolean; uses: number };
+type Position = { id: string; name: string; description: string | null; area: string | null; active: boolean; uses: number };
 
-function PositionForm({ position, onDone }: { position?: Position; onDone?: () => void }) {
+function PositionForm({ position, onDone, areas }: { position?: Position; onDone?: () => void; areas: string[] }) {
   const [state, action, pending] = useActionState(async (prev: FormState, fd: FormData) => {
     const res = await savePositionAction(position?.id ?? null, prev, fd);
     if (res.ok) onDone?.();
@@ -23,6 +23,11 @@ function PositionForm({ position, onDone }: { position?: Position; onDone?: () =
         {e.name && <span className="text-[12.5px] text-danger">{e.name.join(" ")}</span>}
         {!state.ok && !state.fieldErrors && <Alert>{state.message}</Alert>}
       </div>
+      <div key={`a${state.submission ?? 0}`} className="flex w-full flex-col gap-1 sm:w-56">
+        <Input name="area" list="areas-cargos" aria-label="Área profissional" placeholder="Área (ex.: Vendas)" defaultValue={state.ok && !position ? "" : pick(state, "area", position?.area)} invalid={!!e.area} maxLength={60} />
+        <datalist id="areas-cargos">{areas.map((a) => <option key={a} value={a} />)}</datalist>
+        {e.area && <span className="text-[12.5px] text-danger">{e.area.join(" ")}</span>}
+      </div>
       <Button type="submit" disabled={pending}>
         {position ? "Salvar" : <><Plus size={16} weight="bold" /> Adicionar cargo</>}
       </Button>
@@ -31,19 +36,19 @@ function PositionForm({ position, onDone }: { position?: Position; onDone?: () =
   );
 }
 
-function Row({ p }: { p: Position }) {
+function Row({ p, areas }: { p: Position; areas: string[] }) {
   const [editing, setEditing] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  if (editing) return <li className="px-5 py-3"><PositionForm position={p} onDone={() => setEditing(false)} /></li>;
+  if (editing) return <li className="px-5 py-3"><PositionForm position={p} areas={areas} onDone={() => setEditing(false)} /></li>;
   return (
     <li className={cn("flex flex-wrap items-center gap-3 px-5 py-3", !p.active && "opacity-60")}>
       <div className="min-w-0 flex-1">
-        <p className="font-medium">{p.name} {!p.active && <Badge>Inativo</Badge>}</p>
+        <p className="font-medium">{p.name} {p.area && <Badge tone="brand">{p.area}</Badge>} {!p.active && <Badge>Inativo</Badge>}</p>
         <p className="text-[12.5px] text-muted">{p.uses ? `Usado em ${p.uses} vaga(s) ou candidato(s)` : "Ainda não usado"}</p>
         {error && <p className="text-[12.5px] text-danger">{error}</p>}
       </div>
-      <Button size="sm" variant="ghost" onClick={() => setEditing(true)}><PencilSimple size={15} /> Renomear</Button>
+      <Button size="sm" variant="ghost" onClick={() => setEditing(true)}><PencilSimple size={15} /> Editar</Button>
       <Button
         size="sm"
         variant="secondary"
@@ -58,15 +63,16 @@ function Row({ p }: { p: Position }) {
 }
 
 export function PositionsManager({ positions }: { positions: Position[] }) {
+  const areas = [...new Set(positions.map((p) => p.area).filter((a): a is string => !!a))].sort();
   return (
     <Card>
       <div className="border-b border-line p-5">
-        <PositionForm />
+        <PositionForm areas={areas} />
       </div>
       {positions.length === 0 ? (
         <p className="px-5 py-10 text-center text-[13px] text-muted">Nenhum cargo cadastrado. Os cargos aparecem nas vagas e no cadastro de candidatos.</p>
       ) : (
-        <ul className="divide-y divide-line">{positions.map((p) => <Row key={p.id} p={p} />)}</ul>
+        <ul className="divide-y divide-line">{positions.map((p) => <Row key={p.id} p={p} areas={areas} />)}</ul>
       )}
     </Card>
   );

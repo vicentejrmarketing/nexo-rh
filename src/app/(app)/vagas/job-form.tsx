@@ -11,11 +11,12 @@ type Job = {
   id: string; title: string; description: string; requirements: string | null; salaryMin: string | null; salaryMax: string | null;
   salaryText: string | null; benefits: string | null; openings: number; storeId: string; positionId: string | null; city: string;
   recruiterId: string | null; priority: string; expectedCloseAt: string | null; publishedOnline: boolean; status: string;
+  responsibilities: string | null; contractType: string; showSalary: boolean;
 };
 
 export function JobForm({
-  job, stores, positions, recruiters, defaultStoreId,
-}: { job?: Job; stores: (Opt & { city: string })[]; positions: Opt[]; recruiters: (Opt & { role: string })[]; defaultStoreId?: string }) {
+  job, stores, positions, recruiters, defaultStoreId, contracts,
+}: { job?: Job; stores: (Opt & { city: string })[]; positions: Opt[]; recruiters: (Opt & { role: string })[]; defaultStoreId?: string; contracts: Record<string, string> }) {
   const [state, action, pending] = useActionState(saveJobAction.bind(null, job?.id ?? null), { ok: true } as FormState);
   const e = !state.ok ? state.fieldErrors ?? {} : {};
   // Select não controlado (o React 19 reinicia o formulário após a ação); o estado só alimenta a dica de cidade.
@@ -52,11 +53,19 @@ export function JobForm({
             <Field label="Cidade" htmlFor="city" className="sm:col-span-2" hint="Em branco, usa a cidade da loja.">
               <Input id="city" name="city" defaultValue={pick(state, "city", job?.city)} placeholder={storeCity} maxLength={80} />
             </Field>
+            <Field label="Tipo de contratação" htmlFor="contractType" errors={e.contractType} className="sm:col-span-2">
+              <Select id="contractType" name="contractType" defaultValue={pick(state, "contractType", job?.contractType ?? "CLT")}>
+                {Object.entries(contracts).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </Select>
+            </Field>
             <Field label="Quantidade de vagas" htmlFor="openings" errors={e.openings} className="sm:col-span-2">
               <Input id="openings" name="openings" type="number" min={1} defaultValue={pick(state, "openings", job?.openings ?? 1)} invalid={!!e.openings} />
             </Field>
             <Field label="Descrição" htmlFor="description" errors={e.description} className="sm:col-span-6">
               <Textarea id="description" name="description" defaultValue={pick(state, "description", job?.description)} placeholder="Atividades, jornada, local de trabalho..." invalid={!!e.description} className="min-h-32" />
+            </Field>
+            <Field label="Responsabilidades" htmlFor="responsibilities" errors={e.responsibilities} className="sm:col-span-6">
+              <Textarea id="responsibilities" name="responsibilities" defaultValue={pick(state, "responsibilities", job?.responsibilities)} placeholder="O que a pessoa vai fazer no dia a dia" />
             </Field>
             <Field label="Requisitos" htmlFor="requirements" errors={e.requirements} className="sm:col-span-3">
               <Textarea id="requirements" name="requirements" defaultValue={pick(state, "requirements", job?.requirements)} placeholder="Escolaridade, experiência, disponibilidade..." />
@@ -97,7 +106,8 @@ export function JobForm({
               <Input id="expectedCloseAt" name="expectedCloseAt" type="date" defaultValue={pick(state, "expectedCloseAt", job?.expectedCloseAt)} />
             </Field>
             <div className="flex flex-col gap-3 sm:col-span-6">
-              <Checkbox name="publishedOnline" defaultChecked={state.values ? state.values.publishedOnline === "on" : job?.publishedOnline ?? true} label="Publicar no portal de vagas" hint="O portal público de inscrição chega na Etapa 5." />
+              <Checkbox name="publishedOnline" defaultChecked={state.values ? state.values.publishedOnline === "on" : job?.publishedOnline ?? true} label="Publicar no site de vagas" hint="Aparece em Trabalhe conosco e aceita inscrições enquanto a vaga estiver aberta." />
+              <Checkbox name="showSalary" defaultChecked={state.values ? state.values.showSalary === "on" : job?.showSalary ?? true} label="Mostrar o salário no site" hint="Desmarcado, o site mostra só o texto do salário (ex.: A combinar), se houver." />
               {!job && (
                 <Checkbox name="status" value="DRAFT" defaultChecked={state.values?.status === "DRAFT"} label="Salvar como rascunho" hint="A vaga só abre para candidatos quando você publicar." />
               )}

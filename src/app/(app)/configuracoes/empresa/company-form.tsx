@@ -8,6 +8,7 @@ import { saveCompanyAction } from "./actions";
 type Settings = {
   companyName: string; legalName: string | null; taxId: string | null; contactEmail: string | null; contactPhone: string | null;
   privacyPolicy: string | null; privacyVersion: string | null; retentionDays: number; stalledDays: number;
+  siteTitle: string | null; siteIntro: string | null; siteContactEmail: string | null; siteContactWhatsapp: string | null;
 };
 
 export function CompanyForm({ settings, template }: { settings: Settings; template: string }) {
@@ -19,7 +20,7 @@ export function CompanyForm({ settings, template }: { settings: Settings; templa
       {state.message && (state.ok ? <Alert tone="success">{state.message}</Alert> : <Alert>{state.message}</Alert>)}
       <div key={state.submission ?? 0} className="flex flex-col gap-5">
         <Card>
-          <CardHeader title="Dados da empresa" description="Aparecem na política de privacidade e, na Etapa 5, no portal de vagas." />
+          <CardHeader title="Dados da empresa" description="Aparecem na política de privacidade e no site de vagas." />
           <div className="grid gap-5 p-5 sm:grid-cols-2">
             <Field label="Nome fantasia" htmlFor="companyName" errors={e.companyName}>
               <Input id="companyName" name="companyName" defaultValue={pick(state, "companyName", settings.companyName)} maxLength={120} />
@@ -47,6 +48,24 @@ export function CompanyForm({ settings, template }: { settings: Settings; templa
             </Field>
             <Field label="Alerta de candidato parado (dias)" htmlFor="stalledDays" errors={e.stalledDays} hint="Padrão para as etapas do funil (Etapa 3).">
               <Input id="stalledDays" name="stalledDays" type="number" min={1} max={60} defaultValue={pick(state, "stalledDays", settings.stalledDays)} invalid={!!e.stalledDays} />
+            </Field>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Site de vagas" description="Textos e contatos exibidos em Trabalhe conosco. Em branco, o site usa textos padrão." />
+          <div className="grid gap-5 p-5 sm:grid-cols-2">
+            <Field label="Título da página inicial" htmlFor="siteTitle" errors={e.siteTitle} className="sm:col-span-2">
+              <Input id="siteTitle" name="siteTitle" defaultValue={pick(state, "siteTitle", settings.siteTitle)} maxLength={90} placeholder={`Trabalhe na ${settings.companyName || "nossa empresa"}`} />
+            </Field>
+            <Field label="Texto de apresentação" htmlFor="siteIntro" errors={e.siteIntro} className="sm:col-span-2">
+              <Textarea id="siteIntro" name="siteIntro" defaultValue={pick(state, "siteIntro", settings.siteIntro)} maxLength={400} className="min-h-20" placeholder="Confira as vagas abertas nas nossas lojas e candidate-se em poucos minutos." />
+            </Field>
+            <Field label="E-mail de contato no site" htmlFor="siteContactEmail" errors={e.siteContactEmail} hint="Em branco, usa o e-mail da empresa.">
+              <Input id="siteContactEmail" name="siteContactEmail" type="email" defaultValue={pick(state, "siteContactEmail", settings.siteContactEmail)} invalid={!!e.siteContactEmail} />
+            </Field>
+            <Field label="WhatsApp de contato no site" htmlFor="siteContactWhatsapp" errors={e.siteContactWhatsapp}>
+              <Input id="siteContactWhatsapp" name="siteContactWhatsapp" inputMode="tel" defaultValue={pick(state, "siteContactWhatsapp", settings.siteContactWhatsapp)} invalid={!!e.siteContactWhatsapp} />
             </Field>
           </div>
         </Card>

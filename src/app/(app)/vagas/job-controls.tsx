@@ -19,6 +19,7 @@ const NEXT: Record<JobStatus, { to: JobStatus; label: string; icon: typeof Play;
     { to: "CLOSED", label: "Encerrar", icon: Stop, variant: "secondary" },
   ],
   CLOSED: [{ to: "OPEN", label: "Reabrir", icon: ArrowCounterClockwise, variant: "secondary" }],
+  CANCELED: [{ to: "DRAFT", label: "Voltar para rascunho", icon: ArrowCounterClockwise, variant: "secondary" }],
 };
 
 /** Botões de mudança de status (só as transições válidas para o status atual). */

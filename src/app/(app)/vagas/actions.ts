@@ -13,6 +13,7 @@ import { formValues, nextSubmission, str, type FormState, type FormValues } from
 function jobInput(v: FormValues): JobInput {
   return {
     title: str(v, "title"), description: str(v, "description"), requirements: str(v, "requirements"),
+    responsibilities: str(v, "responsibilities"), contractType: (str(v, "contractType") || "CLT") as JobInput["contractType"], showSalary: str(v, "showSalary"),
     salaryMin: str(v, "salaryMin"), salaryMax: str(v, "salaryMax"), salaryText: str(v, "salaryText"), benefits: str(v, "benefits"),
     openings: str(v, "openings") || "1", storeId: str(v, "storeId"), positionId: str(v, "positionId"), city: str(v, "city"),
     recruiterId: str(v, "recruiterId"), priority: (str(v, "priority") || "MEDIUM") as JobInput["priority"],

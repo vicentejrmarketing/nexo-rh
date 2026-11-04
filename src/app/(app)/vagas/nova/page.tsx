@@ -4,7 +4,7 @@ import { Breadcrumb, PageHeader, PageSkeleton } from "@/components/ui";
 import { NoPermission } from "@/components/layout/states";
 import { requirePageActor } from "@/server/auth/current-user";
 import { can } from "@/server/authz/authorize";
-import { jobFormOptions } from "@/server/modules/jobs/service";
+import { CONTRACT_LABEL, jobFormOptions } from "@/server/modules/jobs/service";
 import { JobForm } from "../job-form";
 
 export const metadata: Metadata = { title: "Nova vaga" };
@@ -27,7 +27,7 @@ async function Content({ searchParams }: { searchParams: PageProps<"/vagas/nova"
     <div className="max-w-4xl">
       <Breadcrumb items={[{ href: "/vagas", label: "Vagas" }, { label: "Nova vaga" }]} />
       <PageHeader title="Nova vaga" description="A vaga abre na hora para vincular candidatos — ou salve como rascunho." />
-      <JobForm stores={opts.stores} positions={opts.positions} recruiters={opts.recruiters.map((r) => ({ id: r.id, name: r.name, role: r.role.name }))} defaultStoreId={storeId} />
+      <JobForm stores={opts.stores} positions={opts.positions} recruiters={opts.recruiters.map((r) => ({ id: r.id, name: r.name, role: r.role.name }))} defaultStoreId={storeId} contracts={CONTRACT_LABEL} />
     </div>
   );
 }

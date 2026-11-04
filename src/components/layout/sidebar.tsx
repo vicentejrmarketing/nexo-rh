@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
-  Briefcase, CalendarDots, CaretDown, ChartBar, ChatCircleText, Funnel, GearSix, House, Key, List, SignOut, Storefront,
+  ArrowSquareOut, Briefcase, CalendarDots, CaretDown, ChartBar, ChatCircleText, Funnel, GearSix, Globe, House, Key, List, SignOut, SlidersHorizontal, Storefront,
   UsersFour, UsersThree, X, type Icon,
 } from "@phosphor-icons/react";
 import { Logo } from "@/components/brand/logo";
@@ -14,10 +14,10 @@ import { logoutAction } from "@/app/(auth)/actions";
 
 const ICONS: Record<NavIcon, Icon> = {
   home: House, jobs: Briefcase, candidates: UsersThree, funnel: Funnel, talent: UsersFour,
-  interviews: CalendarDots, messages: ChatCircleText, stores: Storefront, reports: ChartBar, settings: GearSix,
+  interviews: CalendarDots, messages: ChatCircleText, stores: Storefront, reports: ChartBar, settings: GearSix, site: Globe,
 };
 
-type Item = { href: string; label: string; icon: NavIcon; badge?: number };
+type Item = { href: string; label: string; icon: NavIcon; badge?: number; external?: boolean; manageHref?: string };
 type UserInfo = { name: string; roleName: string };
 
 export function initials(name: string) {
@@ -90,6 +90,35 @@ function NavLinks({ items, onNavigate }: { items: Item[]; onNavigate?: () => voi
     <nav aria-label="Menu principal" className="flex flex-col gap-1 pr-3">
       {items.map((item) => {
         const Ico = ICONS[item.icon];
+        if (item.external) {
+          const managing = !!item.manageHref && (pathname === item.manageHref || pathname.startsWith(item.manageHref + "/"));
+          return (
+            <div key={item.href} className={cn("flex h-[44px] items-center rounded-r-full pr-2", managing ? "bg-gradient-to-r from-brand via-brand to-brand/70" : "")}>
+              <a
+                href={item.href}
+                target="_blank"
+                rel="noopener"
+                className={cn("flex h-full flex-1 items-center gap-3.5 rounded-r-full pl-7 text-[15px] font-medium transition-colors", managing ? "font-semibold text-ink" : "text-white/90 hover:text-white")}
+              >
+                <Ico size={23} weight="fill" className={managing ? "text-ink" : "text-white"} />
+                <span className="flex-1">{item.label}</span>
+                <ArrowSquareOut size={15} className={managing ? "text-ink/70" : "text-white/50"} aria-label="abre em nova aba" />
+              </a>
+              {item.manageHref && (
+                <Link
+                  href={item.manageHref}
+                  onClick={onNavigate}
+                  title="Gerenciar publicação das vagas"
+                  aria-label="Gerenciar site de vagas"
+                  aria-current={managing ? "page" : undefined}
+                  className={cn("ml-1 flex h-8 w-8 items-center justify-center rounded-full", managing ? "bg-ink text-brand" : "text-white/70 hover:bg-white/10 hover:text-white")}
+                >
+                  <SlidersHorizontal size={17} weight="bold" />
+                </Link>
+              )}
+            </div>
+          );
+        }
         const active = pathname === item.href || pathname.startsWith(item.href + "/");
         return (
           <Link

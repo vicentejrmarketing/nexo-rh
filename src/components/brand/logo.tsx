@@ -8,7 +8,7 @@ export function Logo({ onDark = true, compact = false, className }: { onDark?: b
         <path d="M4 4h12.5L32 27.5V4h12v40H31.5L16 20.5V44H4z" fill="#F5B900" />
         <path d="M16 20.5 31.5 44H44L28.4 20.9z" fill="#C99700" opacity=".55" />
       </svg>
-      <span className="flex flex-col leading-none">
+      <span className="flex flex-col leading-none whitespace-nowrap">
         <span className={cn("font-extrabold tracking-[0.02em]", compact ? "text-[17px]" : "text-[23px]", onDark ? "text-white" : "text-ink")}>
           NEXO RH
         </span>

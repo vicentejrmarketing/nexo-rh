@@ -5,7 +5,7 @@ import { NoPermission } from "@/components/layout/states";
 import { notFoundCard } from "@/components/layout/not-found-card";
 import { requirePageActor } from "@/server/auth/current-user";
 import { can } from "@/server/authz/authorize";
-import { getJob, jobFormOptions } from "@/server/modules/jobs/service";
+import { CONTRACT_LABEL, getJob, jobFormOptions } from "@/server/modules/jobs/service";
 import { dayKey } from "@/lib/period";
 import { JobForm } from "../../job-form";
 
@@ -42,8 +42,10 @@ async function Content({ params, searchParams }: { params: PageProps<"/vagas/[id
           salaryMin: job.salaryMin?.toString() ?? null, salaryMax: job.salaryMax?.toString() ?? null, salaryText: job.salaryText, benefits: job.benefits,
           openings: job.openings, storeId: job.storeId, positionId: job.positionId, city: job.city, recruiterId: job.recruiterId,
           priority: job.priority, expectedCloseAt: job.expectedCloseAt ? dayKey(job.expectedCloseAt) : null, publishedOnline: job.publishedOnline, status: job.status,
+          responsibilities: job.responsibilities, contractType: job.contractType, showSalary: job.showSalary,
         }}
         stores={stores}
+        contracts={CONTRACT_LABEL}
         positions={opts.positions}
         recruiters={opts.recruiters.map((r) => ({ id: r.id, name: r.name, role: r.role.name }))}
       />

@@ -32,8 +32,8 @@ async function AppSidebar() {
   if (!actor || actor.mustChangePassword) return <SidebarSkeleton />;
   const counters = await getShellCounters(actor);
   // O menu mostra só o que o perfil pode abrir; as páginas e o servidor checam de novo.
-  const items = NAV_ITEMS.filter((item) => item.anyOf.some((p) => can(actor, p))).map(({ href, label, icon, badge }) => ({
-    href, label, icon, badge: badge === "messages" ? counters.unreadMessages : undefined,
+  const items = NAV_ITEMS.filter((item) => item.anyOf.some((p) => can(actor, p))).map(({ href, label, icon, badge, external, manageHref }) => ({
+    href, label, icon, external, manageHref, badge: badge === "messages" ? counters.unreadMessages : undefined,
   }));
   return <Sidebar items={items} user={{ name: actor.name, roleName: actor.roleName }} />;
 }

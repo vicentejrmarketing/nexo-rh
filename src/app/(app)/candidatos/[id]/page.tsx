@@ -16,6 +16,7 @@ import { ROLES } from "@/server/authz/catalog";
 import { SOURCE_LABEL, candidateFormOptions, getCandidateProfile, listTags, openJobsForLinking } from "@/server/modules/candidates/service";
 import { storageReady } from "@/server/storage";
 import { formatDate, formatDateTime } from "@/lib/format";
+import { formatMoneyBR } from "@/lib/form";
 import { digitsOnly, formatPhoneBR } from "@/lib/phone";
 import { anonymizeAction } from "../actions";
 import { LinkJob, NoteForm, OwnerControl, ResumeUpload, TagEditor, TalentPoolToggle } from "./profile-controls";
@@ -87,6 +88,20 @@ async function Content({ params, searchParams }: { params: PageProps<"/candidato
                       </div>
                       <StagePill stageKey={p.stage.key} name={p.stage.name} />
                     </div>
+                    {(p.source === "ONLINE_FORM" || p.salaryExpectation !== null || p.currentlyEmployed !== null) && (
+                      <dl className="mt-3 grid gap-x-4 gap-y-1.5 rounded-lg bg-surface px-3 py-2.5 text-[12.5px] sm:grid-cols-3">
+                        <div><dt className="text-muted">Origem</dt><dd className="font-medium">{SOURCE_LABEL[p.source]}</dd></div>
+                        <div><dt className="text-muted">Pretensão salarial</dt><dd className="font-medium">{p.salaryExpectation ? `R$ ${formatMoneyBR(String(p.salaryExpectation))}` : "—"}</dd></div>
+                        <div><dt className="text-muted">Trabalhando atualmente</dt><dd className="font-medium">{p.currentlyEmployed === null ? "—" : p.currentlyEmployed ? "Sim" : "Não"}</dd></div>
+                        {p.applicantMessage && <div className="sm:col-span-3"><dt className="text-muted">Observações do candidato</dt><dd className="whitespace-pre-line">{p.applicantMessage}</dd></div>}
+                        {p.resume && !p.resume.deletedAt && data.canViewResume && (
+                          <div className="sm:col-span-3">
+                            <dt className="text-muted">Currículo enviado nesta inscrição</dt>
+                            <dd><a href={`/api/files/${p.resume.id}`} target="_blank" rel="noopener" className="inline-flex items-center gap-1 font-medium underline decoration-brand decoration-2 underline-offset-4"><FilePdf size={14} weight="fill" className="text-danger" /> {p.resume.fileName}</a></dd>
+                          </div>
+                        )}
+                      </dl>
+                    )}
                     {p.history.length > 0 && (
                       <ol className="mt-3 flex flex-col gap-1.5 border-l-2 border-brand/50 pl-3">
                         {p.history.map((h) => (

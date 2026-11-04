@@ -15,7 +15,7 @@ import { digitsOnly, toE164BR } from "@/lib/phone";
 import { addDays } from "@/lib/period";
 
 export const SOURCE_LABEL: Record<CandidateSource, string> = {
-  ONLINE_FORM: "Inscrição online", MANUAL: "Cadastro manual", REFERRAL: "Indicação", WHATSAPP: "WhatsApp",
+  ONLINE_FORM: "Site", MANUAL: "Cadastro manual", REFERRAL: "Indicação", WHATSAPP: "WhatsApp",
   JOB_BOARD: "Site de vagas", SOCIAL_MEDIA: "Redes sociais", OTHER: "Outra",
 };
 
@@ -174,10 +174,10 @@ async function retentionDate() {
 
 export type ResumeFile = { name: string; type: string; data: Buffer };
 
-type PreparedResume = { key: string; fileName: string; sizeBytes: number; sha256: string };
+export type PreparedResume = { key: string; fileName: string; sizeBytes: number; sha256: string };
 
 /** Valida e envia o PDF ANTES da transação (envio lento não segura o banco). */
-async function prepareResume(file: ResumeFile): Promise<PreparedResume> {
+export async function prepareResume(file: ResumeFile): Promise<PreparedResume> {
   const problem = validatePdf(file.data);
   if (problem) throw new ValidationError({ resume: [problem] });
   const driver = storage();
@@ -188,14 +188,14 @@ async function prepareResume(file: ResumeFile): Promise<PreparedResume> {
   return { key, fileName: safeName.toLowerCase().endsWith(".pdf") ? safeName : `${safeName}.pdf`, sizeBytes: file.data.length, sha256: sha256(file.data) };
 }
 
-function attachResume(tx: Tx, actor: Actor, candidateId: string, r: PreparedResume) {
+export function attachResume(tx: Tx, uploadedById: string | null, candidateId: string, r: PreparedResume) {
   return tx.attachment.create({
-    data: { candidateId, kind: "RESUME", storageKey: r.key, fileName: r.fileName, mimeType: "application/pdf", sizeBytes: r.sizeBytes, sha256: r.sha256, uploadedById: actor.id },
+    data: { candidateId, kind: "RESUME", storageKey: r.key, fileName: r.fileName, mimeType: "application/pdf", sizeBytes: r.sizeBytes, sha256: r.sha256, uploadedById },
   });
 }
 
 /** Se a gravação no banco falhar, o arquivo já enviado é apagado. */
-async function withUploadedResume<T>(file: ResumeFile | null | undefined, fn: (r: PreparedResume | null) => Promise<T>): Promise<T> {
+export async function withUploadedResume<T>(file: ResumeFile | null | undefined, fn: (r: PreparedResume | null) => Promise<T>): Promise<T> {
   const r = file ? await prepareResume(file) : null;
   try {
     return await fn(r);
@@ -231,7 +231,7 @@ export async function createCandidate(actor: Actor, raw: CandidateInput, opts: {
         })),
       });
     }
-    if (resume) await attachResume(tx, actor, c.id, resume);
+    if (resume) await attachResume(tx, actor.id, c.id, resume);
     await audit(tx, {
       actorId: actor.id, action: "candidate.create", entityType: "Candidate", entityId: c.id, storeId: d.desiredStoreId, ipAddress: opts.ip,
       summary: `Cadastrou o candidato ${c.fullName}`,
@@ -282,7 +282,7 @@ export async function uploadResume(actor: Actor, id: string, file: ResumeFile, i
   const old = await db.attachment.findMany({ where: { candidateId: id, kind: "RESUME", deletedAt: null } });
   const retentionUntil = await retentionDate();
   await withUploadedResume(file, (r) => db.$transaction(async (tx) => {
-    await attachResume(tx, actor, id, r!);
+    await attachResume(tx, actor.id, id, r!);
     await tx.attachment.updateMany({ where: { id: { in: old.map((o) => o.id) } }, data: { deletedAt: new Date() } });
     await tx.candidate.update({ where: { id }, data: { retentionUntil } });
     await audit(tx, { actorId: actor.id, action: "candidate.resume", entityType: "Candidate", entityId: id, storeId: c.desiredStoreId, ipAddress: ip, summary: `Anexou currículo de ${c.fullName}` });
@@ -309,6 +309,8 @@ export async function getCandidateProfile(actor: Actor, id: string) {
         orderBy: { appliedAt: "desc" },
         select: {
           id: true, status: true, appliedAt: true, lastMovedAt: true, source: true, recruiterId: true,
+          salaryExpectation: true, currentlyEmployed: true, applicantMessage: true,
+          resume: { select: { id: true, fileName: true, deletedAt: true } },
           job: { select: { id: true, title: true, status: true, store: { select: { name: true } } } },
           stage: { select: { key: true, name: true } },
           recruiter: { select: { name: true } },
