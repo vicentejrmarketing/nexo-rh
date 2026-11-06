@@ -6,9 +6,12 @@ import { requirePageActor } from "@/server/auth/current-user";
 import { can } from "@/server/authz/authorize";
 import { COMPETENCIES, QUESTIONNAIRE_VERSION, QUESTIONS } from "@/server/modules/behavioral/questionnaire";
 import { BANDS_V2, CONTRADICTION_RULES, JOB_TEMPLATES, MATRIX, MATRIX_VERSION, MATRIX_WEIGHT } from "@/server/modules/behavioral/matrix";
+import { ValidationPanel } from "@/components/behavioral/validation-panel";
 import { PROMPT_VERSION, SYSTEM_PROMPT, aiConfigured, aiModel } from "@/server/modules/behavioral/ai";
 
 export const metadata: Metadata = { title: "Critérios do teste comportamental" };
+// A validação roda 4 análises no Gemini a partir desta página.
+export const maxDuration = 120;
 const nameOf = (k: string) => COMPETENCIES.find((c) => c.key === k)?.name ?? k;
 const pt = (n: number) => String(n).replace(".", ",");
 
@@ -75,6 +78,13 @@ async function Content() {
           <p>Enviado à IA: cargo da vaga, pesos, as 25 perguntas com a alternativa escolhida, as notas calculadas, as contradições e o índice de confiança. <strong>Não são enviados</strong> nome, CPF, contatos, raça, idade, gênero nem endereço.</p>
           <p>A resposta é validada: frases com notas que não existem no cálculo, acusações de mentira, diagnósticos ou características protegidas são descartadas; pontos fortes e de atenção só valem para as competências indicadas pelo cálculo.</p>
           <p>Mesma entrada, mesmo modelo e mesmo prompt reaproveitam a análise guardada. &quot;Reanalisar&quot; cria uma nova versão e mantém as anteriores.</p>
+          {aiConfigured() && (
+            <div className="mt-2 rounded-lg bg-surface p-4">
+              <p className="mb-2 font-semibold">Validação com candidatos simulados</p>
+              <p className="mb-3 text-[12.5px] text-muted">Envia 4 perfis fictícios (alto, contraditório, intermediário e baixo) ao Gemini e mostra o que a IA devolveu, já validado. Nenhum candidato é criado; a execução fica no histórico de atividades.</p>
+              <ValidationPanel templates={JOB_TEMPLATES.map((t) => ({ key: t.key, name: t.name }))} />
+            </div>
+          )}
           <details className="mt-1"><summary className="cursor-pointer font-medium">Instruções dadas à IA ({PROMPT_VERSION})</summary><pre className="mt-2 rounded-lg bg-surface p-3 text-[12px] whitespace-pre-wrap">{SYSTEM_PROMPT}</pre></details>
         </div>
       </Card>

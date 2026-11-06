@@ -163,3 +163,24 @@ describe("pesos, revisão e comparação", () => {
     expect(await db.activityLog.count({ where: { action: "behavioral.review" } })).toBe(1);
   });
 });
+
+describe("validação com candidatos simulados", () => {
+  it("roda 4 perfis pela IA, valida, registra na auditoria e respeita o intervalo", async () => {
+    const { runValidation } = await import("@/server/modules/behavioral/validation");
+    const admin = await adminActor();
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const input = JSON.parse(JSON.parse(init.body as string).contents[0].parts[0].text.replace(/^Dados do teste \(JSON\):\n/, ""));
+      const r = { overall: input.notas.geralPonderadaPelaVaga, competencies: input.notas.competencias.map((c: { chave: string }) => ({ key: c.chave })) };
+      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(aiReply(r as unknown as ResultV2)) }] } }] }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await runValidation(admin, "vendedor");
+    expect(res.rows).toHaveLength(4);
+    expect(res.rows.every((x) => x.ok)).toBe(true);
+    expect(res.rows.find((x) => x.persona.startsWith("Respostas contraditórias"))!.contradictions).toBeGreaterThan(0);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(await db.candidate.count()).toBe(0);
+    expect(await db.activityLog.count({ where: { action: "behavioral.ai_validation" } })).toBe(1);
+    await expect(runValidation(admin, "vendedor")).rejects.toThrow(/Aguarde 2 minutos/);
+  });
+});

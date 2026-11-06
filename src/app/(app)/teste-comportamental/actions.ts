@@ -7,6 +7,7 @@ import { toActionError, type ActionResult } from "@/server/errors";
 import { authorize } from "@/server/authz/authorize";
 import { createTest, findCandidatesForTest, getReport, saveJobProfile, saveReview } from "@/server/modules/behavioral/service";
 import { runAnalysis } from "@/server/modules/behavioral/ai";
+import { runValidation } from "@/server/modules/behavioral/validation";
 import { COMPETENCIES } from "@/server/modules/behavioral/questionnaire";
 import { formValues, nextSubmission, str, type FormState } from "@/lib/form";
 
@@ -72,4 +73,13 @@ export async function saveJobProfileAction(jobId: string, prev: FormState, fd: F
   }
   refresh();
   return { ok: true, message: "Pesos salvos. Valem para os próximos testes desta vaga.", values, submission: nextSubmission(prev) };
+}
+
+export async function runValidationAction(templateKey: string): Promise<ActionResult<Awaited<ReturnType<typeof runValidation>>>> {
+  try {
+    const { ip } = await clientInfo();
+    return { ok: true, data: await runValidation(await requireActor(), templateKey, ip) };
+  } catch (e) {
+    return toActionError(e);
+  }
 }
