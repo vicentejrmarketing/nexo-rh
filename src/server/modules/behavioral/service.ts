@@ -3,14 +3,17 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypt
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/server/db/client";
 import { audit } from "@/server/audit/log";
-import { authorize, can, type Actor } from "@/server/authz/authorize";
+import { authorize, can, canAccessStore, type Actor } from "@/server/authz/authorize";
 import { visibleCandidatesWhere } from "@/server/authz/scopes";
 import { AppError, NotFoundError, ValidationError } from "@/server/errors";
 import { cpfDigits } from "@/lib/cpf";
 import { digitsOnly } from "@/lib/phone";
 import { addDays } from "@/lib/period";
-import { QUESTIONNAIRE_VERSION, QUESTIONS } from "./questionnaire";
-import { scoreTest, validAnswers, type TestResult } from "./scoring";
+import { COMPETENCIES, QUESTIONNAIRE_VERSION, QUESTIONS } from "./questionnaire";
+import { validAnswers, type TestResult } from "./scoring";
+import { DEFAULT_PROFILE, JOB_TEMPLATES, MATRIX_VERSION, type Essential } from "./matrix";
+import { normalizeWeights, scoreV2, type JobProfileSnapshot, type ResultV2 } from "./scoring-v2";
+import { aiConfigured, aiModel } from "./ai";
 
 export const TEST_DAYS = 15;
 
@@ -110,11 +113,12 @@ export async function createTest(actor: Actor, candidateId: string, candidateJob
   authorize(actor, "behavioral.send");
   const c = await db.candidate.findFirst({
     where: { AND: [{ id: candidateId }, visibleCandidatesWhere(actor)] },
-    select: { id: true, fullName: true, desiredStoreId: true, processes: { select: { id: true, status: true } } },
+    select: { id: true, fullName: true, desiredStoreId: true, processes: { select: { id: true, status: true, jobId: true } } },
   });
   if (!c) throw new NotFoundError("Candidato não encontrado.");
   const process = candidateJobId ? c.processes.find((p) => p.id === candidateJobId) : null;
   if (candidateJobId && !process) throw new ValidationError({ candidateJobId: ["Escolha uma das vagas do candidato."] });
+  const jobProfile = await profileSnapshot(process?.jobId ?? null);
   const nonce = randomBytes(12).toString("base64url");
   const test = await db.$transaction(async (tx) => {
     await tx.behavioralTest.updateMany({
@@ -123,7 +127,8 @@ export async function createTest(actor: Actor, candidateId: string, candidateJob
     });
     const t = await tx.behavioralTest.create({
       data: {
-        candidateId: c.id, candidateJobId: candidateJobId ?? null, version: QUESTIONNAIRE_VERSION,
+        candidateId: c.id, candidateJobId: candidateJobId ?? null, version: QUESTIONNAIRE_VERSION, matrixVersion: MATRIX_VERSION,
+        jobProfile: jobProfile as unknown as Prisma.InputJsonValue,
         tokenNonce: nonce, tokenHash: hashToken(tokenFromNonce(nonce)), expiresAt: addDays(new Date(), TEST_DAYS), createdById: actor.id,
       },
     });
@@ -164,8 +169,10 @@ export async function getReport(actor: Actor, id: string, ip?: string | null) {
     where: { id, candidate: visibleCandidatesWhere(actor) },
     include: {
       candidate: { select: { id: true, fullName: true, cpf: true, desiredStoreId: true } },
-      candidateJob: { select: { id: true, job: { select: { title: true, store: { select: { name: true } } } } } },
+      candidateJob: { select: { id: true, job: { select: { id: true, title: true, store: { select: { name: true } } } } } },
       createdBy: { select: { name: true } },
+      reviewedBy: { select: { name: true } },
+      analyses: { orderBy: { version: "desc" }, include: { requestedBy: { select: { name: true } } } },
     },
   });
   if (!t) throw new NotFoundError("Teste não encontrado.");
@@ -175,7 +182,12 @@ export async function getReport(actor: Actor, id: string, ip?: string | null) {
       summary: `Abriu o relatório comportamental de ${t.candidate.fullName}`,
     });
   }
-  return { test: t, state: stateOf(t), result: t.result as TestResult | null, answers: t.answers as number[] | null };
+  return {
+    test: t, state: stateOf(t), result: t.result as TestResult | null, answers: t.answers as number[] | null,
+    resultV2: (t.result as { kind?: string } | null)?.kind === "m2" ? (t.result as unknown as ResultV2) : null,
+    ai: { configured: aiConfigured(), model: aiModel() },
+    analysisPending: t.analyses[0]?.status === "PENDING" && Date.now() - t.analyses[0].createdAt.getTime() < 3 * 60 * 1000,
+  };
 }
 
 // ───────── Página pública ─────────
@@ -190,7 +202,7 @@ async function testByToken(token: string) {
     where: { tokenHash: hashToken(token) },
     include: {
       candidate: { select: { fullName: true, anonymizedAt: true } },
-      candidateJob: { select: { job: { select: { title: true, store: { select: { name: true } } } } } },
+      candidateJob: { select: { jobId: true, job: { select: { title: true, store: { select: { name: true } } } } } },
     },
   });
 }
@@ -228,15 +240,19 @@ export async function submitTest(token: string, answers: unknown, meta: { ip: st
   if (!validAnswers(answers)) {
     throw new ValidationError({ answers: [`Responda todas as ${QUESTIONS.length} perguntas antes de finalizar.`] });
   }
-  const result = scoreTest(answers, t.version);
   const now = new Date();
+  // Testes respondidos a partir da matriz m2 usam o motor novo; os pesos são os congelados no envio
+  // (para links gerados antes desta versão, os da vaga no momento da resposta).
+  const jobProfile = (t.jobProfile as JobProfileSnapshot | null) ?? (await profileSnapshot(t.candidateJob?.jobId ?? null));
+  const result = scoreV2(answers, { jobProfile, durationMs: t.startedAt ? now.getTime() - t.startedAt.getTime() : null, questionnaireVersion: t.version });
   await db.$transaction(async (tx) => {
     // Condição no próprio UPDATE: dois envios simultâneos não gravam duas vezes.
     const done = await tx.behavioralTest.updateMany({
       where: { id: t.id, status: "SENT" },
       data: {
         status: "COMPLETED", completedAt: now, startedAt: t.startedAt ?? now, answers, result: result as unknown as Prisma.InputJsonValue,
-        overall: result.overall, profile: result.profile,
+        overall: result.overall, profile: result.profile, matrixVersion: result.matrixVersion, confidence: result.confidence.level,
+        jobProfile: result.jobProfile as unknown as Prisma.InputJsonValue,
         ipAddress: meta.ip, userAgent: meta.userAgent?.slice(0, 300) ?? null,
       },
     });
@@ -254,4 +270,109 @@ export async function submitTest(token: string, answers: unknown, meta: { ip: st
       summary: `${t.candidate.fullName} respondeu o teste comportamental`,
     });
   });
+  return { testId: t.id };
+}
+
+// ───────── Perfil comportamental da vaga (pesos) ─────────
+
+export type JobProfileInput = { template: string; weights: Record<string, number | string>; essentials: { key: string; min: number | string }[] };
+
+async function profileSnapshot(jobId: string | null): Promise<JobProfileSnapshot> {
+  if (!jobId) return DEFAULT_PROFILE;
+  const p = await db.jobBehavioralProfile.findUnique({ where: { jobId } });
+  if (!p) return DEFAULT_PROFILE;
+  const tpl = JOB_TEMPLATES.find((t) => t.key === p.template);
+  return { template: p.template, name: tpl?.name ?? "Personalizado", weights: normalizeWeights(p.weights as Record<string, number>), essentials: (p.essentials as Essential[]) ?? [] };
+}
+
+export async function getJobProfile(actor: Actor, jobId: string) {
+  authorize(actor, "behavioral.view");
+  const job = await db.job.findUnique({ where: { id: jobId }, select: { id: true, title: true, storeId: true, store: { select: { name: true } }, behavioralProfile: { include: { updatedBy: { select: { name: true } } } } } });
+  if (!job || !canAccessStore(actor, job.storeId)) throw new NotFoundError("Vaga não encontrada.");
+  return { job, profile: await profileSnapshot(job.id), updatedAt: job.behavioralProfile?.updatedAt ?? null, updatedBy: job.behavioralProfile?.updatedBy?.name ?? null };
+}
+
+/** Define pesos e essenciais. Vale para os PRÓXIMOS testes da vaga (os enviados mantêm os pesos do envio). */
+export async function saveJobProfile(actor: Actor, jobId: string, input: JobProfileInput, ip?: string | null) {
+  authorize(actor, "behavioral.view");
+  const job = await db.job.findUnique({ where: { id: jobId }, select: { id: true, title: true, storeId: true } });
+  if (!job || !canAccessStore(actor, job.storeId)) throw new NotFoundError("Vaga não encontrada.");
+  const tpl = JOB_TEMPLATES.find((t) => t.key === input.template);
+  const errors: Record<string, string[]> = {};
+  const weights: Record<string, number> = {};
+  for (const c of COMPETENCIES) {
+    const v = Number(input.weights[c.key]);
+    if (!Number.isInteger(v) || v < 0 || v > 3) errors[`w_${c.key}`] = ["Peso de 0 a 3."];
+    else weights[c.key] = v;
+  }
+  if (!Object.keys(errors).length && Object.values(weights).every((v) => v === 0)) errors.weights = ["Pelo menos uma competência precisa ter peso."];
+  const essentials: Essential[] = [];
+  for (const e of input.essentials) {
+    const k = COMPETENCIES.find((c) => c.key === e.key)?.key;
+    const min = Number(e.min);
+    if (!k) continue;
+    if (!Number.isInteger(min) || min < 40 || min > 100) { errors[`min_${e.key}`] = ["Referência de 40 a 100."]; continue; }
+    essentials.push({ key: k, min });
+  }
+  if (Object.keys(errors).length) throw new ValidationError(errors);
+  const template = tpl && JSON.stringify(normalizeWeights(tpl.weights)) === JSON.stringify(normalizeWeights(weights)) ? tpl.key : "personalizado";
+  const before = await db.jobBehavioralProfile.findUnique({ where: { jobId } });
+  await db.$transaction(async (tx) => {
+    await tx.jobBehavioralProfile.upsert({
+      where: { jobId },
+      update: { template, weights, essentials: essentials as unknown as Prisma.InputJsonValue, updatedById: actor.id },
+      create: { jobId, template, weights, essentials: essentials as unknown as Prisma.InputJsonValue, updatedById: actor.id },
+    });
+    await audit(tx, {
+      actorId: actor.id, action: "behavioral.job_profile", entityType: "Job", entityId: jobId, storeId: job.storeId, ipAddress: ip,
+      summary: `Alterou os pesos comportamentais da vaga ${job.title}`,
+      before: before ? { template: before.template, weights: before.weights, essentials: before.essentials } : { template: "padrao" },
+      after: { template, weights, essentials },
+    });
+  });
+}
+
+// ───────── Revisão humana ─────────
+
+export type ReviewItemStatus = "pendente" | "confirmado" | "nao_confirmado";
+export type Review = { note: string | null; items: Record<string, ReviewItemStatus> };
+
+export async function saveReview(actor: Actor, testId: string, input: { note: string; items: Record<string, string> }, ip?: string | null) {
+  authorize(actor, "behavioral.view");
+  const t = await db.behavioralTest.findFirst({ where: { id: testId, status: "COMPLETED", candidate: visibleCandidatesWhere(actor) }, include: { candidate: { select: { fullName: true, desiredStoreId: true } } } });
+  if (!t) throw new NotFoundError("Teste não encontrado.");
+  const items: Record<string, ReviewItemStatus> = {};
+  for (const [k, v] of Object.entries(input.items)) {
+    if (/^[a-z_:0-9-]{1,40}$/.test(k) && (v === "confirmado" || v === "nao_confirmado")) items[k] = v;
+  }
+  const review: Review = { note: input.note.trim().slice(0, 4000) || null, items };
+  await db.$transaction(async (tx) => {
+    await tx.behavioralTest.update({ where: { id: t.id }, data: { review: review as unknown as Prisma.InputJsonValue, reviewedById: actor.id, reviewedAt: new Date() } });
+    await audit(tx, {
+      actorId: actor.id, action: "behavioral.review", entityType: "Candidate", entityId: t.candidateId, storeId: t.candidate.desiredStoreId, ipAddress: ip,
+      summary: `Registrou a revisão do teste comportamental de ${t.candidate.fullName}`,
+    });
+  });
+}
+
+// ───────── Comparação na mesma vaga ─────────
+
+export async function compareForJob(actor: Actor, jobId: string) {
+  authorize(actor, "behavioral.view");
+  const job = await db.job.findUnique({ where: { id: jobId }, select: { id: true, title: true, storeId: true, store: { select: { name: true } } } });
+  if (!job || !canAccessStore(actor, job.storeId)) throw new NotFoundError("Vaga não encontrada.");
+  const tests = await db.behavioralTest.findMany({
+    where: { status: "COMPLETED", matrixVersion: MATRIX_VERSION, candidateJob: { jobId }, candidate: visibleCandidatesWhere(actor) },
+    orderBy: { completedAt: "desc" },
+    select: { id: true, completedAt: true, result: true, candidate: { select: { id: true, fullName: true } } },
+  });
+  // Só ficam lado a lado testes avaliados com os mesmos pesos (critério consistente).
+  const groups = new Map<string, { profile: JobProfileSnapshot; rows: { id: string; candidate: { id: string; fullName: string }; completedAt: Date | null; r: ResultV2 }[] }>();
+  for (const t of tests) {
+    const r = t.result as unknown as ResultV2;
+    const key = JSON.stringify({ w: r.jobProfile.weights, e: r.jobProfile.essentials });
+    if (!groups.has(key)) groups.set(key, { profile: r.jobProfile, rows: [] });
+    groups.get(key)!.rows.push({ id: t.id, candidate: t.candidate, completedAt: t.completedAt, r });
+  }
+  return { job, groups: [...groups.values()] };
 }

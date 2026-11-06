@@ -7,6 +7,7 @@ import { NoPermission } from "@/components/layout/states";
 import { notFoundCard } from "@/components/layout/not-found-card";
 import { Panel } from "@/components/dashboard/widgets";
 import { CompetencyRadar, PrintButton } from "@/components/behavioral/chart";
+import { ReportV2 } from "@/components/behavioral/report-v2";
 import { ScoreBadge, TestStatusBadge, scoreBand } from "@/components/behavioral/badges";
 import { requirePageActor } from "@/server/auth/current-user";
 import { clientInfo } from "@/server/auth/session";
@@ -17,6 +18,8 @@ import { buildAnalysis, interviewSuggestions } from "@/server/modules/behavioral
 import { formatDate, formatDateTime } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Relatório comportamental" };
+// "Reanalisar com IA" roda nesta página e pode levar até 1 minuto.
+export const maxDuration = 120;
 
 export default function ReportPage({ params }: PageProps<"/teste-comportamental/[id]">) {
   return (
@@ -45,6 +48,15 @@ async function Content({ params }: { params: PageProps<"/teste-comportamental/[i
         <Breadcrumb items={crumbs} />
         <PageHeader title={t.candidate.fullName} description={<span className="flex items-center gap-2">Enviado em {formatDate(t.sentAt)} <TestStatusBadge state={state} /></span>} />
         <Alert tone="brand">O relatório fica disponível assim que o candidato concluir o teste.</Alert>
+      </>
+    );
+  }
+
+  if (data.resultV2) {
+    return (
+      <>
+        <div className="print:hidden"><Breadcrumb items={crumbs} /></div>
+        <ReportV2 data={data} r={data.resultV2} />
       </>
     );
   }

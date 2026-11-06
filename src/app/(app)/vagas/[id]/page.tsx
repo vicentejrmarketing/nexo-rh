@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { FunnelSimple, Info, PencilSimple, Trash, UserPlus, UsersThree } from "@phosphor-icons/react/ssr";
+import { Brain, FunnelSimple, Info, PencilSimple, Trash, UserPlus, UsersThree } from "@phosphor-icons/react/ssr";
 import { Alert, Badge, Breadcrumb, InfoList, PageHeader, PageSkeleton, buttonClass } from "@/components/ui";
 import { ConfirmAction } from "@/components/ui/confirm-action";
 import { NoPermission } from "@/components/layout/states";
@@ -74,6 +74,7 @@ async function Content({ params, searchParams }: { params: PageProps<"/vagas/[id
           <>
             {data.canEdit && <JobStatusButtons id={job.id} status={job.status} />}
             {data.canEdit && <Link href={`/vagas/${job.id}/editar`} className={buttonClass("secondary")}><PencilSimple size={17} /> Editar</Link>}
+            {can(actor, "behavioral.view") && <Link href={`/vagas/${job.id}/perfil-comportamental`} className={buttonClass("secondary")}><Brain size={17} /> Perfil comportamental</Link>}
             {data.canCreate && <DuplicateJobButton id={job.id} />}
             {job.publishedOnline && ["OPEN", "PAUSED", "CLOSED"].includes(job.status) && (
               <>

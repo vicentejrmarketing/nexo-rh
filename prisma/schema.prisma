@@ -271,6 +271,9 @@ model User {
   admissionLinks      Admission[]           @relation("AdmissionLinkCreator")
   admissionReviews    AdmissionFile[]       @relation("AdmissionFileReviewer")
   behavioralTestsSent BehavioralTest[]      @relation("BehavioralTestCreator")
+  behavioralReviews   BehavioralTest[]      @relation("BehavioralTestReviewer")
+  behavioralAnalyses  BehavioralAnalysis[]
+  jobBehavioralEdits  JobBehavioralProfile[]
   recruiterJobs       Job[]                 @relation("JobRecruiter")
   createdJobs         Job[]                 @relation("JobCreatedBy")
   ownedCandidates     Candidate[]           @relation("CandidateOwner")
@@ -474,6 +477,8 @@ model Job {
   recruiter   User?          @relation("JobRecruiter", fields: [recruiterId], references: [id], onDelete: SetNull)
   createdBy   User?          @relation("JobCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   processes   CandidateJob[]
+
+  behavioralProfile JobBehavioralProfile?
 
   @@index([status, storeId])
   @@index([recruiterId, status])
@@ -1058,6 +1063,12 @@ model BehavioralTest {
   candidateId    String
   candidateJobId String? // vaga para a qual o candidato concorre (opcional)
   version        String // versão do questionário (as regras de pontuação ficam no código, por versão)
+  matrixVersion  String? // versão da matriz de pontuação (nulo = cálculo original do v1)
+  jobProfile     Json? // pesos e competências essenciais da vaga, congelados no envio
+  confidence     String? // Alta, Moderada ou Baixa (confiança da análise, não do candidato)
+  review         Json? // revisão humana: parecer e pontos confirmados na entrevista
+  reviewedById   String?
+  reviewedAt     DateTime?
   status         BehavioralTestStatus @default(SENT)
   tokenNonce     String?
   tokenHash      String?              @unique
@@ -1079,10 +1090,65 @@ model BehavioralTest {
   candidate    Candidate     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   candidateJob CandidateJob? @relation(fields: [candidateJobId], references: [id], onDelete: SetNull)
   createdBy    User?         @relation("BehavioralTestCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  reviewedBy   User?         @relation("BehavioralTestReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  analyses     BehavioralAnalysis[]
 
   @@index([candidateId, createdAt])
   @@index([candidateJobId])
   @@index([status, sentAt])
   @@index([createdById])
   @@map("behavioral_tests")
+}
+
+enum BehavioralAnalysisStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+/// Análise da IA de um teste. Cada (re)análise é uma nova versão; nada é sobrescrito.
+model BehavioralAnalysis {
+  id            String                   @id @default(cuid())
+  testId        String
+  version       Int
+  status        BehavioralAnalysisStatus @default(PENDING)
+  provider      String // ex.: gemini
+  model         String
+  promptVersion String
+  matrixVersion String
+  inputHash     String // mesmas entradas = mesmo hash (reaproveita a análise)
+  output        Json?
+  filtered      Int                      @default(0) // trechos descartados pela validação
+  error         String?
+  inputTokens   Int?
+  outputTokens  Int?
+  requestedById String?
+  createdAt     DateTime                 @default(now())
+  completedAt   DateTime?
+
+  test        BehavioralTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+  requestedBy User?          @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+
+  @@unique([testId, version])
+  @@index([testId, status])
+  @@index([requestedById])
+  @@map("behavioral_analyses")
+}
+
+/// Pesos das competências e competências essenciais definidos para a vaga.
+model JobBehavioralProfile {
+  id          String   @id @default(cuid())
+  jobId       String   @unique
+  template    String
+  weights     Json
+  essentials  Json
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  job       Job   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  updatedBy User? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([updatedById])
+  @@map("job_behavioral_profiles")
 }

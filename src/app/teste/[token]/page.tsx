@@ -6,6 +6,8 @@ import { TestRunner } from "@/components/behavioral/test-runner";
 import { PUBLIC_QUESTIONS, openTest } from "@/server/modules/behavioral/service";
 
 export const metadata: Metadata = { title: "Teste comportamental" };
+// A análise da IA roda logo após o envio (dentro do tempo desta página).
+export const maxDuration = 120;
 
 export default function TestPage({ params }: PageProps<"/teste/[token]">) {
   return (
