@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { FunnelSimple, MagnifyingGlass } from "@phosphor-icons/react/ssr";
 import { Skeleton } from "@/components/ui";
@@ -25,6 +26,7 @@ export default function PublicJobsPage({ searchParams }: PageProps<"/trabalhe-co
 const sel = "h-10 w-full rounded-lg border border-line bg-white px-3 text-[14px] text-ink focus:border-ink focus:outline-none";
 
 async function Results({ searchParams }: { searchParams: PageProps<"/trabalhe-conosco/vagas">["searchParams"] }) {
+  await connection(); // filtro por data de publicação usa a hora atual: sempre na requisição
   const sp = await searchParams;
   const params = {
     q: one(sp.q), cargo: one(sp.cargo), area: one(sp.area), cidade: one(sp.cidade), estado: one(sp.estado), loja: one(sp.loja),
