@@ -145,4 +145,27 @@ describe("contratados", () => {
     expect((await listHires(other)).total).toBe(1);
     await expect(generateLink(other, processId)).rejects.toBeInstanceOf(ForbiddenError);
   });
+
+  it("aceita fotos em todos os formatos comuns (JPG, PNG, WEBP, HEIC, HEIF, AVIF, GIF, BMP, TIFF)", async () => {
+    const { recruiter, processId } = await setup();
+    const token = tokenOf((await generateLink(recruiter, processId)).path);
+    const session = await verifyIdentity(token, "52998224725", meta.ip);
+    const pad = (b: Buffer) => Buffer.concat([b, Buffer.alloc(64, 7)]);
+    const ftyp = (brand: string) => pad(Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftyp" + brand)]));
+    const files: [string, Buffer, string][] = [
+      ["a.png", pad(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])), "image/png"],
+      ["a.webp", pad(Buffer.concat([Buffer.from("RIFF"), Buffer.from([1, 0, 0, 0]), Buffer.from("WEBP")])), "image/webp"],
+      ["a.heic", ftyp("heic"), "image/heic"],
+      ["a.heif", ftyp("mif1"), "image/heic"],
+      ["a.avif", ftyp("avif"), "image/avif"],
+      ["a.gif", pad(Buffer.from("GIF89a")), "image/gif"],
+      ["a.bmp", pad(Buffer.from([0x42, 0x4d, 1, 2])), "image/bmp"],
+      ["a.tif", pad(Buffer.from([0x49, 0x49, 0x2a, 0x00])), "image/tiff"],
+    ];
+    const kinds = ["SELFIE", "SELFIE", "SELFIE", "SELFIE", "ID_DOCUMENT", "ID_DOCUMENT", "ID_DOCUMENT", "ID_DOCUMENT"];
+    for (const [i, [name, data, mime]] of files.entries()) {
+      const f = await uploadAdmissionFile(token, session, kinds[i], { name, data }, meta.ip);
+      expect((await db.admissionFile.findUniqueOrThrow({ where: { id: f.id } })).mimeType).toBe(mime);
+    }
+  });
 });

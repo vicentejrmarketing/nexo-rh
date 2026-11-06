@@ -30,9 +30,16 @@ export function IdentityGate({ token }: { token: string }) {
 
 const MAX_BYTES = 4 * 1024 * 1024;
 
-/** Fotos grandes do celular são reduzidas antes do envio (mantém a leitura do documento). */
+const isImage = (f: File) => f.type.startsWith("image/") || /\.(jpe?g|png|webp|heic|heif|gif|bmp|tiff?|avif)$/i.test(f.name);
+
+/**
+ * Qualquer foto que o navegador consiga abrir vira JPEG (reduzida se for grande), para o RH conseguir
+ * visualizar e para caber no limite de envio. Se o navegador não abrir o formato (ex.: HEIC no Android),
+ * o arquivo vai como está.
+ */
 async function shrinkImage(file: File): Promise<File> {
-  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size < 1.5 * 1024 * 1024) return file;
+  if (!isImage(file)) return file;
+  if (/^image\/(jpeg|png)$/.test(file.type) && file.size < 1.5 * 1024 * 1024) return file;
   try {
     const bmp = await createImageBitmap(file);
     const scale = Math.min(1, 2200 / Math.max(bmp.width, bmp.height));
@@ -41,7 +48,7 @@ async function shrinkImage(file: File): Promise<File> {
     canvas.height = Math.round(bmp.height * scale);
     canvas.getContext("2d")!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
     const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", 0.85));
-    if (!blob || blob.size >= file.size) return file;
+    if (!blob || (blob.size >= file.size && /^image\/(jpeg|png)$/.test(file.type))) return file;
     return new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" });
   } catch {
     return file;
@@ -66,7 +73,9 @@ function DocUpload({ token, doc, files, setFiles, error }: { token: string; doc:
       setBusy(`Enviando ${original.name}…`);
       const file = await shrinkImage(original);
       if (file.size > MAX_BYTES) {
-        setErr(`"${original.name}" passa de 4 MB. Tire uma foto com menos resolução ou envie um PDF menor.`);
+        setErr(isImage(original)
+          ? `Não foi possível reduzir a foto "${original.name}" (passa de 4 MB). Tire a foto de novo ou mande um print da tela.`
+          : `"${original.name}" passa de 4 MB. Envie um PDF menor.`);
         continue;
       }
       const fd = new FormData();
@@ -118,7 +127,7 @@ function DocUpload({ token, doc, files, setFiles, error }: { token: string; doc:
         {doc.imageOnly ? <Camera size={18} weight="bold" /> : <UploadSimple size={18} weight="bold" />}
         {busy ?? (mine.length ? "Adicionar outro arquivo" : doc.imageOnly ? "Tirar ou escolher foto" : "Enviar foto ou PDF")}
         <input ref={input} type="file" className="sr-only" disabled={!!busy} multiple={!doc.imageOnly}
-          accept={doc.imageOnly ? "image/*" : "image/*,application/pdf"} {...(doc.imageOnly ? { capture: "user" as const } : {})}
+          accept={doc.imageOnly ? "image/*,.heic,.heif" : "image/*,.heic,.heif,application/pdf"} {...(doc.imageOnly ? { capture: "user" as const } : {})}
           onChange={(e) => void onPick(e.target.files)} />
       </label>
       {(err || error) && <p className="text-[13px] text-danger" role="alert">{err ?? error}</p>}

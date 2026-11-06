@@ -342,7 +342,14 @@ function sniff(data: Buffer): { mime: string; ext: string } | null {
   if (h[0] === 0xff && h[1] === 0xd8 && h[2] === 0xff) return { mime: "image/jpeg", ext: "jpg" };
   if (h.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return { mime: "image/png", ext: "png" };
   if (h.subarray(0, 4).toString("latin1") === "RIFF" && h.subarray(8, 12).toString("latin1") === "WEBP") return { mime: "image/webp", ext: "webp" };
-  if (h.subarray(4, 8).toString("latin1") === "ftyp" && /^(heic|heix|hevc|mif1|msf1|heif)$/.test(h.subarray(8, 12).toString("latin1"))) return { mime: "image/heic", ext: "heic" };
+  if (h.subarray(4, 8).toString("latin1") === "ftyp") {
+    const brand = h.subarray(8, 12).toString("latin1");
+    if (/^(avif|avis)$/.test(brand)) return { mime: "image/avif", ext: "avif" };
+    if (/^(heic|heix|heim|heis|hevc|hevx|hevm|hevs|mif1|msf1|heif)$/.test(brand)) return { mime: "image/heic", ext: "heic" };
+  }
+  if (h.subarray(0, 4).toString("latin1") === "GIF8") return { mime: "image/gif", ext: "gif" };
+  if (h[0] === 0x42 && h[1] === 0x4d) return { mime: "image/bmp", ext: "bmp" };
+  if ((h[0] === 0x49 && h[1] === 0x49 && h[2] === 0x2a && h[3] === 0x00) || (h[0] === 0x4d && h[1] === 0x4d && h[2] === 0x00 && h[3] === 0x2a)) return { mime: "image/tiff", ext: "tiff" };
   if (data.subarray(0, 5).toString("latin1") === "%PDF-") return { mime: "application/pdf", ext: "pdf" };
   return null;
 }
@@ -358,7 +365,7 @@ export async function uploadAdmissionFile(token: string, session: string | undef
   if (!file.data.length) throw new ValidationError({ file: ["O arquivo está vazio."] });
   if (file.data.length > MAX_DOC_BYTES) throw new ValidationError({ file: ["O arquivo deve ter no máximo 4 MB."] });
   const type = sniff(file.data);
-  if (!type) throw new ValidationError({ file: ["Envie uma foto (JPG, PNG, HEIC) ou um PDF."] });
+  if (!type) throw new ValidationError({ file: ["Formato não reconhecido. Envie uma foto (JPG, PNG, HEIC, WEBP, GIF…) ou um PDF."] });
   if (DOC_INFO[k].imageOnly && type.mime === "application/pdf") throw new ValidationError({ file: ["Para a selfie, envie uma foto."] });
   if (type.mime === "application/pdf") {
     const sample = file.data.subarray(0, Math.min(file.data.length, 2 * 1024 * 1024)).toString("latin1");
