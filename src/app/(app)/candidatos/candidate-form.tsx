@@ -6,12 +6,13 @@ import { Warning } from "@phosphor-icons/react";
 import { Alert, Button, Card, CardHeader, Checkbox, Field, Input, Select, Textarea, buttonClass } from "@/components/ui";
 import { FileInput } from "@/components/ui/file-input";
 import { pick, type FormState } from "@/lib/form";
+import { maskCpf } from "@/lib/cpf";
 import type { DuplicateHit } from "@/server/modules/candidates/service";
 import { checkDuplicatesAction, saveCandidateAction } from "./actions";
 
 type Opt = { id: string; name: string };
 export type CandidateFormData = {
-  id: string; fullName: string; phone: string; whatsapp: string; email: string | null; city: string | null; state: string | null; address: string | null;
+  id: string; fullName: string; cpf: string; phone: string; whatsapp: string; email: string | null; city: string | null; state: string | null; address: string | null;
   desiredPositionId: string | null; desiredStoreId: string | null; source: string; experience: string | null; introduction: string | null; ownerId: string | null;
 };
 
@@ -32,7 +33,7 @@ export function CandidateForm({
     if (!f) return;
     const get = (n: string) => (f.elements.namedItem(n) as HTMLInputElement | null)?.value ?? "";
     const n = ++seq.current;
-    const hits = await checkDuplicatesAction({ phone: get("phone"), whatsapp: get("whatsapp"), email: get("email"), excludeId: candidate?.id });
+    const hits = await checkDuplicatesAction({ cpf: get("cpf"), phone: get("phone"), whatsapp: get("whatsapp"), email: get("email"), excludeId: candidate?.id });
     if (n === seq.current) setDups(hits);
   }
   // Ao voltar com erro, confere de novo o que foi digitado.
@@ -66,8 +67,11 @@ export function CandidateForm({
         <Card>
           <CardHeader title="Dados pessoais e contato" />
           <div className="grid gap-5 p-5 sm:grid-cols-6">
-            <Field label="Nome completo" htmlFor="fullName" errors={e.fullName} className="sm:col-span-6">
+            <Field label="Nome completo" htmlFor="fullName" errors={e.fullName} className="sm:col-span-4">
               <Input id="fullName" name="fullName" defaultValue={pick(state, "fullName", candidate?.fullName)} maxLength={120} autoFocus={!candidate} autoComplete="off" invalid={!!e.fullName} />
+            </Field>
+            <Field label="CPF" htmlFor="cpf" errors={e.cpf} className="sm:col-span-2">
+              <Input id="cpf" name="cpf" inputMode="numeric" autoComplete="off" placeholder="000.000.000-00" maxLength={14} defaultValue={pick(state, "cpf", candidate?.cpf)} onInput={maskCpf} onBlur={checkDuplicates} invalid={!!e.cpf} />
             </Field>
             <Field label="Telefone" htmlFor="phone" errors={e.phone} className="sm:col-span-2">
               <Input id="phone" name="phone" inputMode="tel" defaultValue={pick(state, "phone", candidate?.phone)} placeholder="(11) 98888-7777" onBlur={checkDuplicates} invalid={!!e.phone} />

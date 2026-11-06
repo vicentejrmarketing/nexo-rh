@@ -19,7 +19,7 @@ process.env.LOCAL_STORAGE_DIR = "/tmp/nexo-test-storage";
 const PDF = { name: "curriculo.pdf", type: "application/pdf", data: Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF") };
 const meta = (ip = "10.0.0.1") => ({ ip, userAgent: "vitest", token: issueFormToken(Date.now() - 6000) });
 const form = (extra: Partial<ApplyInput> = {}): ApplyInput => ({
-  fullName: "Bruna Costa Lima", phone: "(47) 98888-1111", email: "bruna@exemplo.com", city: "Itajaí", state: "SC",
+  fullName: "Bruna Costa Lima", cpf: "529.982.247-25", phone: "(47) 98888-1111", email: "bruna@exemplo.com", city: "Itajaí", state: "SC",
   salaryExpectation: "2.300,00", currentlyEmployed: "nao", consent: "on", ...extra,
 });
 
@@ -110,6 +110,8 @@ describe("inscrição pelo site", () => {
     expect(app.consents.map((c) => c.purpose).sort()).toEqual(["RECRUITMENT_PROCESS", "TALENT_POOL", "WHATSAPP_CONTACT"]);
     expect(app.candidate.desiredStoreId).toBe(store.id);
     expect(app.candidate.inTalentPool).toBe(true);
+    expect(app.candidate.cpf).toBe("52998224725");
+    expect((await searchCandidates(admin, { q: "529.982.247-25" })).total).toBe(1);
     expect(await db.stageHistory.count({ where: { candidateJobId: app.id } })).toBe(1);
     expect(await db.notification.count({ where: { userId: recruiter.id, type: "NEW_APPLICATION" } })).toBe(1);
 
@@ -140,11 +142,23 @@ describe("inscrição pelo site", () => {
     expect(Number((await db.candidateJob.findUniqueOrThrow({ where: { id: first.applicationId } })).salaryExpectation)).toBe(2500);
   });
 
+  it("CPF: mesmo CPF com outro telefone reaproveita; mesmo telefone com outro CPF é outra pessoa", async () => {
+    const { job } = await setup();
+    const first = await submitApplication(job.slug, form(), PDF, meta());
+    const sameCpf = await submitApplication(job.slug, form({ phone: "(47) 97777-0000", email: "" }), PDF, meta("10.0.0.2"));
+    expect(sameCpf.candidateId).toBe(first.candidateId);
+    const relative = await submitApplication(job.slug, form({ fullName: "Carlos Costa Lima", cpf: "111.444.777-35", email: "" }), PDF, meta("10.0.0.3"));
+    expect(relative.candidateId).not.toBe(first.candidateId);
+    expect((await db.candidate.findUniqueOrThrow({ where: { id: relative.candidateId } })).cpf).toBe("11144477735");
+    const missing = await submitApplication(job.slug, form({ cpf: "" }), PDF, meta("10.0.0.4")).catch((e) => e);
+    expect(missing.fieldErrors.cpf).toEqual(["Informe seu CPF."]);
+  });
+
   it("valida campos, telefone, pretensão, PDF e consentimento", async () => {
     const { job } = await setup();
-    const err = await submitApplication(job.slug, form({ phone: "123", salaryExpectation: "abc", consent: undefined as unknown as "on", state: "XX" as "SC" }), null, meta()).catch((e) => e);
+    const err = await submitApplication(job.slug, form({ cpf: "111.111.111-11", phone: "123", salaryExpectation: "abc", consent: undefined as unknown as "on", state: "XX" as "SC" }), null, meta()).catch((e) => e);
     expect(err).toBeInstanceOf(ValidationError);
-    expect(Object.keys(err.fieldErrors).sort()).toEqual(["consent", "phone", "resume", "salaryExpectation", "state"]);
+    expect(Object.keys(err.fieldErrors).sort()).toEqual(["consent", "cpf", "phone", "resume", "salaryExpectation", "state"]);
     const fake = { ...PDF, data: Buffer.from("MZ isto não é um pdf") };
     await expect(submitApplication(job.slug, form(), fake, meta())).rejects.toBeInstanceOf(ValidationError);
     const js = { ...PDF, data: Buffer.from("%PDF-1.4 /JavaScript (app.alert(1))") };

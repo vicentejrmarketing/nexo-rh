@@ -18,6 +18,7 @@ import { storageReady } from "@/server/storage";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { formatMoneyBR } from "@/lib/form";
 import { digitsOnly, formatPhoneBR } from "@/lib/phone";
+import { formatCpf } from "@/lib/cpf";
 import { anonymizeAction, deleteCandidateAction } from "../actions";
 import { optOutAction } from "@/app/(app)/mensagens/enviar/actions";
 import { candidateCommunication } from "@/server/modules/automations/service";
@@ -213,6 +214,7 @@ async function Content({ params, searchParams }: { params: PageProps<"/candidato
           <Panel title="Perfil" icon={IdentificationCard}>
             <InfoList
               items={[
+                { label: "CPF", value: c.cpf ? formatCpf(c.cpf) : "—" },
                 { label: "Telefone", value: formatPhoneBR(c.phoneE164) || "—" },
                 { label: "WhatsApp", value: formatPhoneBR(c.whatsappE164) || "—" },
                 { label: "E-mail", value: c.email ?? "—" },

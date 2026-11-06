@@ -1,3 +1,4 @@
+import { formatCpf } from "@/lib/cpf";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Breadcrumb, PageHeader, PageSkeleton } from "@/components/ui";
@@ -36,7 +37,7 @@ async function Content({ params }: { params: PageProps<"/candidatos/[id]/editar"
       <PageHeader title={`Editar ${c.fullName}`} />
       <CandidateForm
         candidate={{
-          id: c.id, fullName: c.fullName, phone: formatPhoneBR(c.phoneE164), whatsapp: formatPhoneBR(c.whatsappE164), email: c.email, city: c.city, state: c.state,
+          id: c.id, fullName: c.fullName, cpf: formatCpf(c.cpf), phone: formatPhoneBR(c.phoneE164), whatsapp: formatPhoneBR(c.whatsappE164), email: c.email, city: c.city, state: c.state,
           address: c.address, desiredPositionId: c.desiredPositionId, desiredStoreId: c.desiredStoreId, source: c.source, experience: c.experience,
           introduction: c.introduction, ownerId: c.ownerId,
         }}

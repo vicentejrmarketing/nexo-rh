@@ -14,7 +14,7 @@ import { formValues, nextSubmission, str, type FormState, type FormValues } from
 
 function candidateInput(v: FormValues): CandidateInput {
   return {
-    fullName: str(v, "fullName"), phone: str(v, "phone"), whatsapp: str(v, "whatsapp"), sameWhatsapp: str(v, "sameWhatsapp"), email: str(v, "email"),
+    fullName: str(v, "fullName"), cpf: str(v, "cpf"), phone: str(v, "phone"), whatsapp: str(v, "whatsapp"), sameWhatsapp: str(v, "sameWhatsapp"), email: str(v, "email"),
     city: str(v, "city"), state: str(v, "state"), address: str(v, "address"), desiredPositionId: str(v, "desiredPositionId"),
     desiredStoreId: str(v, "desiredStoreId"), source: (str(v, "source") || "MANUAL") as CandidateInput["source"], experience: str(v, "experience"),
     introduction: str(v, "introduction"), ownerId: str(v, "ownerId"), consent: str(v, "consent"),
@@ -49,7 +49,7 @@ export async function saveCandidateAction(id: string | null, prev: FormState, fd
 }
 
 /** Verificação de duplicidade enquanto o recrutador digita. */
-export async function checkDuplicatesAction(input: { phone?: string; whatsapp?: string; email?: string; excludeId?: string }): Promise<DuplicateHit[]> {
+export async function checkDuplicatesAction(input: { cpf?: string; phone?: string; whatsapp?: string; email?: string; excludeId?: string }): Promise<DuplicateHit[]> {
   const actor = await requireActor();
   return findDuplicates(actor, input);
 }

@@ -1,4 +1,5 @@
 import "server-only";
+import { cpfDigits, isValidCpf } from "@/lib/cpf";
 import { ensureDefaultRules, onStageEntered } from "@/server/modules/automations/service";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
@@ -248,6 +249,13 @@ async function rateLimit(rules: { bucket: string; max: number; windowMs: number 
 
 const applySchema = z.object({
   fullName: z.string().trim().min(5, "Informe seu nome completo.").max(120).refine((v) => v.includes(" "), "Informe nome e sobrenome."),
+  cpf: z.string().transform((v, ctx) => {
+    if (!isValidCpf(v)) {
+      ctx.addIssue({ code: "custom", message: cpfDigits(v) ? "CPF inválido. Confira os números." : "Informe seu CPF." });
+      return z.NEVER;
+    }
+    return cpfDigits(v);
+  }),
   phone: z.string().transform((v, ctx) => {
     const e = toE164BR(v);
     if (!e) {
@@ -320,17 +328,20 @@ export async function submitApplication(slug: string, raw: ApplyInput, resume: R
 
   const result = await withUploadedResume(resume, (file) =>
     db.$transaction(async (tx) => {
-      // 5) Duplicidade: o mesmo telefone (ou e-mail) reaproveita o cadastro existente.
+      // 5) Duplicidade: o mesmo CPF reaproveita o cadastro. Sem CPF igual, o mesmo telefone (ou e-mail)
+      //    também reaproveita, desde que aquele cadastro não tenha outro CPF (ex.: parentes com o mesmo número).
+      const sameCpfOrNone = { OR: [{ cpf: null }, { cpf: d.cpf }] };
       const existing =
-        (await tx.candidate.findFirst({ where: { anonymizedAt: null, OR: [{ phoneE164: d.phone }, { whatsappE164: d.phone }] }, orderBy: { createdAt: "asc" } })) ??
-        (d.email ? await tx.candidate.findFirst({ where: { anonymizedAt: null, email: d.email }, orderBy: { createdAt: "asc" } }) : null);
+        (await tx.candidate.findFirst({ where: { anonymizedAt: null, cpf: d.cpf }, orderBy: { createdAt: "asc" } })) ??
+        (await tx.candidate.findFirst({ where: { anonymizedAt: null, AND: [{ OR: [{ phoneE164: d.phone }, { whatsappE164: d.phone }] }, sameCpfOrNone] }, orderBy: { createdAt: "asc" } })) ??
+        (d.email ? await tx.candidate.findFirst({ where: { anonymizedAt: null, email: d.email, ...sameCpfOrNone }, orderBy: { createdAt: "asc" } }) : null);
 
       const candidate = existing
         ? await tx.candidate.update({
             where: { id: existing.id },
             // Só completa o que estiver vazio: não sobrescreve o que o recrutador já conferiu.
             data: {
-              phoneE164: existing.phoneE164 ?? d.phone, whatsappE164: existing.whatsappE164 ?? d.phone, email: existing.email ?? d.email,
+              cpf: existing.cpf ?? d.cpf, phoneE164: existing.phoneE164 ?? d.phone, whatsappE164: existing.whatsappE164 ?? d.phone, email: existing.email ?? d.email,
               city: existing.city ?? d.city, state: existing.state ?? d.state, experience: existing.experience ?? d.experience,
               desiredStoreId: existing.desiredStoreId ?? job.storeId, desiredPositionId: existing.desiredPositionId ?? job.positionId,
               inTalentPool: existing.inTalentPool || d.talentPool, retentionUntil,
@@ -338,7 +349,7 @@ export async function submitApplication(slug: string, raw: ApplyInput, resume: R
           })
         : await tx.candidate.create({
             data: {
-              fullName: d.fullName, phoneE164: d.phone, whatsappE164: d.phone, email: d.email, city: d.city, state: d.state,
+              fullName: d.fullName, cpf: d.cpf, phoneE164: d.phone, whatsappE164: d.phone, email: d.email, city: d.city, state: d.state,
               experience: d.experience, desiredStoreId: job.storeId, desiredPositionId: job.positionId, source: "ONLINE_FORM",
               inTalentPool: d.talentPool, retentionUntil,
             },

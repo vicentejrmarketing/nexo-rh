@@ -23,7 +23,7 @@ export async function applyAction(slug: string, prev: FormState, fd: FormData): 
       resume = { name: f.name, type: f.type, data: Buffer.from(await f.arrayBuffer()) };
     }
     const input: ApplyInput = {
-      fullName: str(values, "fullName"), phone: str(values, "phone"), email: str(values, "email"), city: str(values, "city"),
+      fullName: str(values, "fullName"), cpf: str(values, "cpf"), phone: str(values, "phone"), email: str(values, "email"), city: str(values, "city"),
       state: str(values, "state") as ApplyInput["state"], salaryExpectation: str(values, "salaryExpectation"),
       currentlyEmployed: str(values, "currentlyEmployed") as ApplyInput["currentlyEmployed"], experience: str(values, "experience"),
       message: str(values, "message"), consent: str(values, "consent") as ApplyInput["consent"], talentPool: str(values, "talentPool"),

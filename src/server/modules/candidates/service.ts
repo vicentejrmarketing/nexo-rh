@@ -13,6 +13,7 @@ import { fieldErrorsOf } from "@/server/modules/users/schemas";
 import { getCompanySettings } from "@/server/modules/settings/service";
 import { sha256, storage, validatePdf } from "@/server/storage";
 import { digitsOnly, toE164BR } from "@/lib/phone";
+import { cpfDigits, isValidCpf } from "@/lib/cpf";
 import { addDays } from "@/lib/period";
 
 export const SOURCE_LABEL: Record<CandidateSource, string> = {
@@ -38,6 +39,14 @@ const phoneField = (label: string) =>
 const candidateSchema = z
   .object({
     fullName: z.string().trim().min(3, "Informe o nome completo.").max(120),
+    cpf: z.string().optional().transform((v, ctx) => {
+      if (!cpfDigits(v)) return null;
+      if (!isValidCpf(v)) {
+        ctx.addIssue({ code: "custom", message: "CPF inválido. Confira os números." });
+        return z.NEVER;
+      }
+      return cpfDigits(v);
+    }),
     phone: phoneField("Telefone"),
     whatsapp: phoneField("WhatsApp"),
     sameWhatsapp: z.string().optional().transform((v) => v === "on"),
@@ -72,7 +81,7 @@ function searchWhere(actor: Actor, f: CandidateFilters): Prisma.CandidateWhereIn
     const digits = digitsOnly(q);
     if (q.includes("@")) and.push({ email: { contains: q.toLowerCase() } });
     else if (digits.length >= 4 && digits.length >= q.replace(/\s/g, "").length - 4) {
-      and.push({ OR: [{ phoneE164: { contains: digits } }, { whatsappE164: { contains: digits } }] });
+      and.push({ OR: [{ phoneE164: { contains: digits } }, { whatsappE164: { contains: digits } }, ...(digits.length >= 6 ? [{ cpf: { contains: digits } }] : [])] });
     } else {
       and.push({ OR: [{ fullName: { contains: q, mode: "insensitive" } }, { email: { contains: q.toLowerCase() } }] });
     }
@@ -120,20 +129,22 @@ export async function searchCandidates(actor: Actor, f: CandidateFilters = {}) {
 
 // ───────── Duplicidade ─────────
 
-export type DuplicateHit = { id: string | null; fullName: string | null; matchedBy: ("telefone" | "e-mail")[]; visible: boolean };
+export type DuplicateHit = { id: string | null; fullName: string | null; matchedBy: ("CPF" | "telefone" | "e-mail")[]; visible: boolean };
 
 /** Possíveis duplicados por telefone/WhatsApp ou e-mail. Fora do acesso do usuário, mostra só que existe. */
-export async function findDuplicates(actor: Actor, input: { phone?: string; whatsapp?: string; email?: string; excludeId?: string }): Promise<DuplicateHit[]> {
+export async function findDuplicates(actor: Actor, input: { cpf?: string; phone?: string; whatsapp?: string; email?: string; excludeId?: string }): Promise<DuplicateHit[]> {
   authorize(actor, "candidates.view");
   const phones = [toE164BR(input.phone), toE164BR(input.whatsapp)].filter((p): p is string => !!p);
   const email = input.email?.trim().toLowerCase();
   const or: Prisma.CandidateWhereInput[] = [];
+  const cpf = isValidCpf(input.cpf) ? cpfDigits(input.cpf) : null;
+  if (cpf) or.push({ cpf });
   if (phones.length) or.push({ phoneE164: { in: phones } }, { whatsappE164: { in: phones } });
   if (email && email.includes("@")) or.push({ email });
   if (!or.length) return [];
   const found = await db.candidate.findMany({
     where: { anonymizedAt: null, OR: or, ...(input.excludeId ? { id: { not: input.excludeId } } : {}) },
-    select: { id: true, fullName: true, phoneE164: true, whatsappE164: true, email: true },
+    select: { id: true, fullName: true, cpf: true, phoneE164: true, whatsappE164: true, email: true },
     take: 5,
   });
   if (!found.length) return [];
@@ -142,6 +153,7 @@ export async function findDuplicates(actor: Actor, input: { phone?: string; what
   );
   return found.map((c) => {
     const matchedBy: DuplicateHit["matchedBy"] = [];
+    if (cpf && c.cpf === cpf) matchedBy.push("CPF");
     if (phones.some((p) => p === c.phoneE164 || p === c.whatsappE164)) matchedBy.push("telefone");
     if (email && c.email === email) matchedBy.push("e-mail");
     const visible = visibleIds.has(c.id);
@@ -473,7 +485,7 @@ async function anonymizeInTx(tx: Tx, id: string) {
   await tx.candidate.update({
     where: { id },
     data: {
-      fullName: "Candidato anonimizado", phoneE164: null, whatsappE164: null, email: null, address: null, city: null, state: null,
+      fullName: "Candidato anonimizado", cpf: null, phoneE164: null, whatsappE164: null, email: null, address: null, city: null, state: null,
       experience: null, introduction: null, inTalentPool: false, optedOutAt: now, anonymizedAt: now, ownerId: null,
     },
   });

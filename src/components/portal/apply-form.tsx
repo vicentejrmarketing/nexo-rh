@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import { Alert, Field, Input, Select, Textarea } from "@/components/ui";
 import { FileInput } from "@/components/ui/file-input";
 import { pick, type FormState } from "@/lib/form";
+import { maskCpf } from "@/lib/cpf";
 import { applyAction } from "@/app/trabalhe-conosco/actions";
 
 export function ApplyForm({ slug, token, ufs }: { slug: string; token: string; ufs: readonly string[] }) {
@@ -22,10 +23,13 @@ export function ApplyForm({ slug, token, ufs }: { slug: string; token: string; u
         <Field label="Nome completo *" htmlFor="fullName" errors={e.fullName} className="sm:col-span-6">
           <Input id="fullName" name="fullName" autoComplete="name" defaultValue={pick(state, "fullName")} maxLength={120} invalid={!!e.fullName} required />
         </Field>
+        <Field label="CPF *" htmlFor="cpf" errors={e.cpf} className="sm:col-span-3">
+          <Input id="cpf" name="cpf" inputMode="numeric" autoComplete="off" placeholder="000.000.000-00" maxLength={14} defaultValue={pick(state, "cpf")} invalid={!!e.cpf} required onInput={maskCpf} />
+        </Field>
         <Field label="Telefone / WhatsApp *" htmlFor="phone" errors={e.phone} className="sm:col-span-3">
           <Input id="phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="(47) 99999-0000" defaultValue={pick(state, "phone")} invalid={!!e.phone} required />
         </Field>
-        <Field label="E-mail" htmlFor="email" errors={e.email} className="sm:col-span-3">
+        <Field label="E-mail" htmlFor="email" errors={e.email} className="sm:col-span-6">
           <Input id="email" name="email" type="email" autoComplete="email" defaultValue={pick(state, "email")} invalid={!!e.email} />
         </Field>
         <Field label="Cidade onde mora *" htmlFor="city" errors={e.city} className="sm:col-span-4">
