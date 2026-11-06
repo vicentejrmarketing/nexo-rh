@@ -171,6 +171,28 @@ enum NotificationType {
   SYSTEM
 }
 
+enum AdmissionStatus {
+  PENDING // link gerado, aguardando o contratado
+  SUBMITTED // enviado: o RH precisa conferir
+  CHANGES_REQUESTED // devolvido para correção
+  COMPLETED // conferido e aprovado
+}
+
+enum AdmissionDocKind {
+  ID_DOCUMENT // RG com CPF ou CNH
+  PROOF_OF_ADDRESS
+  SELFIE
+  WORK_CARD // carteira de trabalho
+  VOTER_ID // título de eleitor
+  MILITARY // reservista
+}
+
+enum AdmissionFileStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum AttachmentKind {
   RESUME
   OTHER
@@ -240,6 +262,8 @@ model User {
   automationsUpdated  AutomationRule[]    @relation("AutomationUpdatedBy")
   dispatchesSent      MessageDispatch[]   @relation("DispatchSentBy")
   managedStores       Store[]               @relation("StoreManager")
+  admissionLinks      Admission[]           @relation("AdmissionLinkCreator")
+  admissionReviews    AdmissionFile[]       @relation("AdmissionFileReviewer")
   recruiterJobs       Job[]                 @relation("JobRecruiter")
   createdJobs         Job[]                 @relation("JobCreatedBy")
   ownedCandidates     Candidate[]           @relation("CandidateOwner")
@@ -630,6 +654,7 @@ model CandidateJob {
   recruiter  User?            @relation("ProcessRecruiter", fields: [recruiterId], references: [id], onDelete: SetNull)
   history    StageHistory[]
   interviews Interview[]
+  admission  Admission?
 
   @@unique([candidateId, jobId])
   @@index([jobId, stageId])
@@ -943,4 +968,76 @@ model Notification {
   @@unique([userId, dedupeKey])
   @@index([userId, readAt, createdAt])
   @@map("notifications")
+}
+
+// ─────────────────── Admissão (documentos do contratado) ───────────────────
+
+model Admission {
+  id                 String          @id @default(cuid())
+  candidateJobId     String          @unique
+  status             AdmissionStatus @default(PENDING)
+  // Link: guardamos o "nonce" e o hash do token. O token é nonce + assinatura com segredo do servidor,
+  // então o link pode ser mostrado de novo sem ficar gravado em claro.
+  tokenNonce         String?
+  tokenHash          String?         @unique
+  tokenExpiresAt     DateTime?
+  linkCreatedAt      DateTime?
+  linkCreatedById    String?
+  lastOpenedAt       DateTime?
+  submittedAt        DateTime?
+  completedAt        DateTime?
+  reviewNote         String? // recado do RH ao devolver para correção
+  // Dados preenchidos pelo contratado
+  email              String?
+  race               String?
+  uniformSize        String?
+  education          String?
+  pisNis             String?
+  maritalStatus      String?
+  children           Json? // [{ name, cpf, birthDate }]
+  spouseName         String?
+  spouseCpf          String?
+  spouseBirthDate    String? // AAAA-MM-DD
+  needsTransport     Boolean?
+  busesPerDay        Int?
+  transportDailyCost Decimal?        @db.Decimal(10, 2)
+  bankAccount        String?
+  bankBranch         String?
+  pixKey             String?
+  privacyAcceptedAt  DateTime?
+  ipAddress          String?
+  userAgent          String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  candidateJob  CandidateJob    @relation(fields: [candidateJobId], references: [id], onDelete: Cascade)
+  linkCreatedBy User?           @relation("AdmissionLinkCreator", fields: [linkCreatedById], references: [id], onDelete: SetNull)
+  files         AdmissionFile[]
+
+  @@index([status])
+  @@index([linkCreatedById])
+  @@map("admissions")
+}
+
+model AdmissionFile {
+  id              String              @id @default(cuid())
+  admissionId     String
+  kind            AdmissionDocKind
+  storageKey      String              @unique
+  fileName        String
+  mimeType        String
+  sizeBytes       Int
+  sha256          String
+  status          AdmissionFileStatus @default(PENDING)
+  rejectionReason String?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  createdAt       DateTime            @default(now())
+
+  admission  Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  reviewedBy User?     @relation("AdmissionFileReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([admissionId, kind])
+  @@index([reviewedById])
+  @@map("admission_files")
 }

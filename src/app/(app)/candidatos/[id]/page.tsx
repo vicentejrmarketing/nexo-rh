@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import {
-  Briefcase, CalendarDots, ChatText, FilePdf, IdentificationCard, NotePencil, PencilSimple, ShieldCheck, Tag, UserCircle, WhatsappLogo, Plus,
+  Briefcase, CalendarDots, ChatText, FilePdf, FolderOpen, IdentificationCard, NotePencil, PencilSimple, ShieldCheck, Tag, UserCircle, WhatsappLogo, Plus,
 } from "@phosphor-icons/react/ssr";
 import { Alert, Badge, Breadcrumb, InfoList, PageHeader, PageSkeleton, buttonClass } from "@/components/ui";
 import { ConfirmAction } from "@/components/ui/confirm-action";
@@ -103,6 +103,9 @@ async function Content({ params, searchParams }: { params: PageProps<"/candidato
                       <span className="flex items-center gap-2">
                         {p.status === "ACTIVE" && canSchedule && (
                           <Link href={`/entrevistas/nova?processo=${p.id}`} className={buttonClass("secondary", "sm")}><CalendarDots size={15} /> Agendar entrevista</Link>
+                        )}
+                        {p.status === "HIRED" && can(actor, "admission.view") && (
+                          <Link href={`/contratados/${p.id}`} className={buttonClass("secondary", "sm")}><FolderOpen size={15} /> Admissão</Link>
                         )}
                         <StagePill stageKey={p.stage.key} name={p.stage.name} />
                       </span>

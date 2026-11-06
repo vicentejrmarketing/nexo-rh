@@ -33,6 +33,8 @@ export const PERMISSIONS = {
   "reports.view": { module: "Relatórios", description: "Ver relatórios" },
   "reports.export": { module: "Relatórios", description: "Exportar relatórios em PDF e Excel" },
   "privacy.manage": { module: "LGPD", description: "Consentimentos, retenção e anonimização" },
+  "admission.view": { module: "Contratados", description: "Ver contratados e documentos de admissão" },
+  "admission.manage": { module: "Contratados", description: "Gerar link de documentos e conferir a admissão" },
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;
@@ -71,7 +73,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
       "interviews.view", "interviews.manage", "interviews.evaluate",
       "messages.view", "messages.send", "templates.manage",
       "talentpool.view", "talentpool.manage",
-      "reports.view", "reports.export", "privacy.manage",
+      "reports.view", "reports.export", "privacy.manage", "admission.view", "admission.manage",
     ],
   },
   RECRUITER: {
@@ -85,7 +87,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
       "pipeline.view", "pipeline.move",
       "interviews.view", "interviews.manage", "interviews.evaluate",
       "messages.view", "messages.send",
-      "talentpool.view", "talentpool.manage", "reports.view",
+      "talentpool.view", "talentpool.manage", "reports.view", "admission.view", "admission.manage",
     ],
   },
   STORE_MANAGER: {
@@ -95,7 +97,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     ownRecordsOnly: false,
     permissions: [
       "dashboard.view", "stores.view", "jobs.view", "candidates.view", "resumes.view",
-      "pipeline.view", "interviews.view", "reports.view",
+      "pipeline.view", "interviews.view", "reports.view", "admission.view",
     ],
   },
 };
