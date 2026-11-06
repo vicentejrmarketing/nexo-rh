@@ -13,7 +13,7 @@ export type NavItem = {
   manageHref?: string;
 };
 
-export type NavIcon = "home" | "jobs" | "candidates" | "funnel" | "talent" | "interviews" | "messages" | "stores" | "reports" | "settings" | "site" | "hired";
+export type NavIcon = "home" | "jobs" | "candidates" | "funnel" | "talent" | "interviews" | "messages" | "stores" | "reports" | "settings" | "site" | "hired" | "behavior";
 
 export const NAV_ITEMS: NavItem[] = [
   { href: "/visao-geral", label: "Visão Geral", icon: "home", anyOf: ["dashboard.view"] },
@@ -22,6 +22,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/funil", label: "Funil de Recrutamento", icon: "funnel", anyOf: ["pipeline.view"] },
   { href: "/banco-de-talentos", label: "Banco de Talentos", icon: "talent", anyOf: ["talentpool.view"] },
   { href: "/entrevistas", label: "Entrevistas", icon: "interviews", anyOf: ["interviews.view"] },
+  { href: "/teste-comportamental", label: "Teste Comportamental", icon: "behavior", anyOf: ["behavioral.send", "behavioral.view"] },
   { href: "/contratados", label: "Contratados", icon: "hired", anyOf: ["admission.view"] },
   { href: "/mensagens", label: "Mensagens", icon: "messages", anyOf: ["messages.view"], badge: "messages" },
   { href: "/lojas", label: "Lojas", icon: "stores", anyOf: ["stores.view"] },

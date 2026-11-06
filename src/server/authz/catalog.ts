@@ -35,6 +35,8 @@ export const PERMISSIONS = {
   "privacy.manage": { module: "LGPD", description: "Consentimentos, retenção e anonimização" },
   "admission.view": { module: "Contratados", description: "Ver contratados e documentos de admissão" },
   "admission.manage": { module: "Contratados", description: "Gerar link de documentos e conferir a admissão" },
+  "behavioral.send": { module: "Teste Comportamental", description: "Gerar e enviar testes comportamentais" },
+  "behavioral.view": { module: "Teste Comportamental", description: "Ver resultados e relatórios dos testes comportamentais" },
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;
@@ -73,7 +75,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
       "interviews.view", "interviews.manage", "interviews.evaluate",
       "messages.view", "messages.send", "templates.manage",
       "talentpool.view", "talentpool.manage",
-      "reports.view", "reports.export", "privacy.manage", "admission.view", "admission.manage",
+      "reports.view", "reports.export", "privacy.manage", "admission.view", "admission.manage", "behavioral.send", "behavioral.view",
     ],
   },
   RECRUITER: {
@@ -87,7 +89,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
       "pipeline.view", "pipeline.move",
       "interviews.view", "interviews.manage", "interviews.evaluate",
       "messages.view", "messages.send",
-      "talentpool.view", "talentpool.manage", "reports.view", "admission.view", "admission.manage",
+      "talentpool.view", "talentpool.manage", "reports.view", "admission.view", "admission.manage", "behavioral.send",
     ],
   },
   STORE_MANAGER: {

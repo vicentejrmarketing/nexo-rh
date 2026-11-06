@@ -23,6 +23,7 @@ import { anonymizeAction, deleteCandidateAction } from "../actions";
 import { optOutAction } from "@/app/(app)/mensagens/enviar/actions";
 import { candidateCommunication } from "@/server/modules/automations/service";
 import { db } from "@/server/db/client";
+import { BehavioralSection } from "@/components/behavioral/candidate-section";
 import { OpenConversationButton } from "@/components/messages/open-button";
 import { LinkJob, NoteForm, OwnerControl, ResumeUpload, TagEditor, TalentPoolToggle } from "./profile-controls";
 
@@ -156,6 +157,8 @@ async function Content({ params, searchParams }: { params: PageProps<"/candidato
               </div>
             )}
           </Panel>
+
+          <BehavioralSection actor={actor} candidate={c} />
 
           {can(actor, "messages.view") && (
             <Panel title="Comunicação" icon={ChatText} action={conv[0] ? <Link href={`/mensagens?c=${conv[0].id}`} className="text-[13px] font-semibold hover:underline">Abrir conversa</Link> : undefined}>

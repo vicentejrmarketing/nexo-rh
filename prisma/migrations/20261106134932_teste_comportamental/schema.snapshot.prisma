@@ -1,0 +1,1088 @@
+// NEXO RH — modelo de dados
+// Convenções: ids cuid, tabelas em snake_case (@@map), datas em UTC.
+// Toda tabela recebe RLS habilitado na migração (deny-all para a Data API do Supabase);
+// a aplicação acessa o banco pelo papel dono das tabelas, via Prisma.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────── Enums ─────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum StoreStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum JobStatus {
+  DRAFT
+  OPEN
+  PAUSED
+  CLOSED
+  CANCELED
+}
+
+enum ContractType {
+  CLT
+  INTERNSHIP
+  TEMPORARY
+  APPRENTICE
+  PJ
+  PART_TIME
+}
+
+enum PrivacyRequestStatus {
+  OPEN
+  DONE
+  REJECTED
+}
+
+enum JobPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum CandidateSource {
+  ONLINE_FORM
+  MANUAL
+  REFERRAL
+  WHATSAPP
+  JOB_BOARD
+  SOCIAL_MEDIA
+  OTHER
+}
+
+enum ProcessStatus {
+  ACTIVE
+  HIRED
+  REJECTED
+  WITHDRAWN
+}
+
+enum StageKind {
+  OPEN
+  HIRED
+  REJECTED
+  WITHDRAWN
+}
+
+enum InterviewMode {
+  ONLINE
+  IN_PERSON
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELED
+  RESCHEDULED
+  NO_SHOW
+}
+
+enum InterviewRecommendation {
+  ADVANCE
+  HOLD
+  REJECT
+}
+
+enum ConversationStatus {
+  OPEN
+  WAITING_CANDIDATE
+  WAITING_TEAM
+  CLOSED
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  RECEIVED
+}
+
+enum TemplateCategory {
+  UTILITY
+  MARKETING
+  AUTHENTICATION
+}
+
+enum TemplateApproval {
+  LOCAL_ONLY
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum DispatchStatus {
+  PENDING // para enviar
+  BLOCKED // dado faltando (ex.: link da entrevista)
+  SENT
+  SKIPPED // pulada pelo recrutador ou expirada
+  CANCELED // evento desfeito (ex.: entrevista reagendada)
+}
+
+enum MessageChannel {
+  API // WhatsApp Cloud API (envio automático)
+  MANUAL_LINK // aberto no WhatsApp do recrutador (1 clique)
+}
+
+enum IntegrationStatus {
+  NOT_CONNECTED
+  CONNECTED
+  ERROR
+}
+
+enum ConsentPurpose {
+  RECRUITMENT_PROCESS
+  TALENT_POOL
+  WHATSAPP_CONTACT
+}
+
+enum ConsentSource {
+  ONLINE_FORM
+  MANUAL
+  WHATSAPP
+}
+
+enum NotificationType {
+  INTERVIEW_SOON
+  STALLED_CANDIDATE
+  NEW_APPLICATION
+  NEW_MESSAGE
+  MESSAGE_FAILED
+  SYSTEM
+}
+
+enum BehavioralTestStatus {
+  SENT // link gerado, aguardando resposta
+  COMPLETED
+  CANCELED // substituído por um novo teste
+}
+
+enum AdmissionStatus {
+  PENDING // link gerado, aguardando o contratado
+  SUBMITTED // enviado: o RH precisa conferir
+  CHANGES_REQUESTED // devolvido para correção
+  COMPLETED // conferido e aprovado
+}
+
+enum AdmissionDocKind {
+  ID_DOCUMENT // RG com CPF ou CNH
+  PROOF_OF_ADDRESS
+  SELFIE
+  WORK_CARD // carteira de trabalho
+  VOTER_ID // título de eleitor
+  MILITARY // reservista
+}
+
+enum AdmissionFileStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AttachmentKind {
+  RESUME
+  OTHER
+}
+
+// ─────────────────── Acesso e permissões ───────────────────
+
+model Role {
+  id          String           @id @default(cuid())
+  key         String           @unique // ADMIN | HR_MANAGER | RECRUITER | STORE_MANAGER
+  name        String
+  description String?
+  allStores   Boolean          @default(false) // true = ignora o escopo por loja
+  isSystem    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  users       User[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  key         String           @unique // ex.: users.manage, jobs.update
+  module      String
+  description String
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model User {
+  id                 String     @id @default(cuid())
+  name               String
+  email              String     @unique // sempre em minúsculas
+  phone              String?
+  passwordHash       String
+  roleId             String
+  status             UserStatus @default(ACTIVE)
+  mustChangePassword Boolean    @default(true)
+  failedLoginCount   Int        @default(0)
+  lockedUntil        DateTime?
+  lastLoginAt        DateTime?
+  passwordChangedAt  DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  role                Role                  @relation(fields: [roleId], references: [id])
+  stores              UserStore[]
+  sessions            Session[]
+  passwordResetTokens PasswordResetToken[]
+  activityLogs        ActivityLog[]
+  notifications       Notification[]
+  privacyHandled      PrivacyRequest[]    @relation("PrivacyHandledBy")
+  automationsUpdated  AutomationRule[]    @relation("AutomationUpdatedBy")
+  dispatchesSent      MessageDispatch[]   @relation("DispatchSentBy")
+  managedStores       Store[]               @relation("StoreManager")
+  admissionLinks      Admission[]           @relation("AdmissionLinkCreator")
+  admissionReviews    AdmissionFile[]       @relation("AdmissionFileReviewer")
+  behavioralTestsSent BehavioralTest[]      @relation("BehavioralTestCreator")
+  recruiterJobs       Job[]                 @relation("JobRecruiter")
+  createdJobs         Job[]                 @relation("JobCreatedBy")
+  ownedCandidates     Candidate[]           @relation("CandidateOwner")
+  candidateNotes      CandidateNote[]
+  recruiterProcesses  CandidateJob[]        @relation("ProcessRecruiter")
+  stageMoves          StageHistory[]
+  interviewsLed       Interview[]           @relation("Interviewer")
+  interviewsCreated   Interview[]           @relation("InterviewCreatedBy")
+  evaluations         InterviewEvaluation[]
+  assignedConvos      Conversation[]
+  sentMessages        Message[]
+  uploadedFiles       Attachment[]
+  templatesUpdated    MessageTemplate[]
+
+  @@index([roleId])
+  @@index([status])
+  @@map("users")
+}
+
+model UserStore {
+  userId    String
+  storeId   String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@id([userId, storeId])
+  @@index([storeId])
+  @@map("user_stores")
+}
+
+model Session {
+  id         String   @id // SHA-256 do token; o token em si só existe no cookie
+  userId     String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  ipAddress  String?
+  userAgent  String?
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model PasswordResetToken {
+  id        String    @id // SHA-256 do token
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String
+  ipAddress String?
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([ipAddress, createdAt])
+  @@map("login_attempts")
+}
+
+// ─────────────────────── Estrutura ───────────────────────
+
+model CompanySettings {
+  id             String   @id @default("default")
+  companyName    String   @default("")
+  legalName      String?
+  taxId          String?
+  contactEmail   String?
+  contactPhone   String?
+  privacyPolicy  String?
+  privacyVersion String?
+  retentionDays  Int      @default(730)
+  stalledDays    Int      @default(3)
+  // Portal de vagas (personalização)
+  siteTitle      String?
+  siteIntro      String?
+  siteLogoKey    String? // arquivo no armazenamento privado, servido pelo sistema
+  siteBannerKey  String?
+  siteContactEmail String?
+  siteContactWhatsapp String?
+  updatedAt      DateTime @updatedAt
+
+  @@map("company_settings")
+}
+
+/// Pedido de exclusão/acesso de dados feito pelo titular no site (LGPD).
+model PrivacyRequest {
+  id          String               @id @default(cuid())
+  fullName    String
+  phoneE164   String?
+  email       String?
+  message     String?
+  candidateId String? // cadastro encontrado pelo telefone/e-mail, se houver
+  status      PrivacyRequestStatus @default(OPEN)
+  handledById String?
+  handledAt   DateTime?
+  ipAddress   String?
+  createdAt   DateTime             @default(now())
+
+  candidate Candidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  handledBy User?      @relation("PrivacyHandledBy", fields: [handledById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([candidateId])
+  @@index([handledById])
+  @@map("privacy_requests")
+}
+
+/// Contador de envios públicos (inscrições, pedidos) para limitar spam. Chaves são hashes, nunca IP em claro.
+model RateLimitHit {
+  id        String   @id @default(cuid())
+  bucket    String // ex.: "apply:ip:<hash>"
+  createdAt DateTime @default(now())
+
+  @@index([bucket, createdAt])
+  @@map("rate_limit_hits")
+}
+
+model Store {
+  id            String      @id @default(cuid())
+  name          String
+  city          String
+  state         String      @db.VarChar(2)
+  address       String?
+  managerId     String?
+  employeeCount Int         @default(0)
+  status        StoreStatus @default(ACTIVE)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  manager             User?        @relation("StoreManager", fields: [managerId], references: [id], onDelete: SetNull)
+  users               UserStore[]
+  jobs                Job[]
+  desiredByCandidates Candidate[]
+  interviews          Interview[]
+
+  @@unique([name, city])
+  @@index([status])
+  @@index([city, state])
+  @@index([managerId])
+  @@map("stores")
+}
+
+model Position {
+  id                  String      @id @default(cuid())
+  name                String      @unique
+  description         String?
+  area                String? // área profissional, usada no filtro do site
+  active              Boolean     @default(true)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  jobs                Job[]
+  desiredByCandidates Candidate[]
+
+  @@map("positions")
+}
+
+// ───────────────────────── Vagas ─────────────────────────
+
+model Job {
+  id               String      @id @default(cuid())
+  title            String
+  slug             String      @unique
+  description      String
+  requirements     String?
+  salaryMin        Decimal?    @db.Decimal(10, 2)
+  salaryMax        Decimal?    @db.Decimal(10, 2)
+  salaryText       String? // ex.: "A combinar"
+  benefits         String?
+  openings         Int         @default(1)
+  storeId          String
+  positionId       String?
+  city             String
+  recruiterId      String?
+  priority         JobPriority @default(MEDIUM)
+  status           JobStatus   @default(DRAFT)
+  openedAt         DateTime?
+  expectedCloseAt  DateTime?
+  closedAt         DateTime?
+  publishedOnline  Boolean     @default(true)
+  publishedAt      DateTime? // primeira vez que ficou visível no site
+  contractType     ContractType @default(CLT)
+  responsibilities String?
+  showSalary       Boolean     @default(true)
+  createdById      String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  store       Store          @relation(fields: [storeId], references: [id])
+  position    Position?      @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  recruiter   User?          @relation("JobRecruiter", fields: [recruiterId], references: [id], onDelete: SetNull)
+  createdBy   User?          @relation("JobCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  processes   CandidateJob[]
+
+  @@index([status, storeId])
+  @@index([recruiterId, status])
+  @@index([priority, status])
+  @@index([openedAt])
+  @@index([storeId])
+  @@index([positionId])
+  @@index([createdById])
+  @@index([publishedOnline, status, publishedAt])
+  @@map("jobs")
+}
+
+// ─────────────────────── Candidatos ───────────────────────
+
+model Candidate {
+  id                String          @id @default(cuid())
+  fullName          String
+  cpf               String? // só os 11 dígitos
+  phoneE164         String?
+  whatsappE164      String?
+  email             String? // sempre em minúsculas
+  city              String?
+  state             String?         @db.VarChar(2)
+  address           String?
+  desiredPositionId String?
+  desiredStoreId    String?
+  source            CandidateSource
+  experience        String?
+  introduction      String?
+  ownerId           String?
+  inTalentPool      Boolean         @default(true)
+  retentionUntil    DateTime?
+  optedOutAt        DateTime? // pediu para não receber mensagens
+  anonymizedAt      DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  desiredPosition Position?          @relation(fields: [desiredPositionId], references: [id], onDelete: SetNull)
+  desiredStore    Store?             @relation(fields: [desiredStoreId], references: [id], onDelete: SetNull)
+  owner           User?              @relation("CandidateOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  processes       CandidateJob[]
+  consents        CandidateConsent[]
+  attachments     Attachment[]
+  tags            CandidateTag[]
+  notes           CandidateNote[]
+  conversations   Conversation[]
+  privacyRequests PrivacyRequest[]
+  behavioralTests BehavioralTest[]
+
+  @@index([cpf])
+  @@index([phoneE164])
+  @@index([whatsappE164])
+  @@index([email])
+  @@index([city, desiredPositionId])
+  @@index([ownerId])
+  @@index([createdAt])
+  @@index([inTalentPool, retentionUntil])
+  @@index([desiredStoreId])
+  @@index([desiredPositionId])
+  @@map("candidates")
+}
+
+model Attachment {
+  id           String         @id @default(cuid())
+  candidateId  String
+  kind         AttachmentKind @default(RESUME)
+  storageKey   String         @unique // caminho no bucket privado
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  sha256       String
+  uploadedById String?
+  createdAt    DateTime       @default(now())
+  deletedAt    DateTime?
+
+  candidate    Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  uploadedBy   User?          @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  applications CandidateJob[] @relation("ApplicationResume")
+
+  @@index([candidateId, kind])
+  @@index([uploadedById])
+  @@map("attachments")
+}
+
+model Tag {
+  id         String         @id @default(cuid())
+  name       String         @unique
+  createdAt  DateTime       @default(now())
+  candidates CandidateTag[]
+
+  @@map("tags")
+}
+
+model CandidateTag {
+  candidateId String
+  tagId       String
+  createdAt   DateTime  @default(now())
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  tag         Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([candidateId, tagId])
+  @@index([tagId])
+  @@map("candidate_tags")
+}
+
+model CandidateNote {
+  id          String    @id @default(cuid())
+  candidateId String
+  authorId    String?
+  body        String
+  createdAt   DateTime  @default(now())
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  author      User?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([candidateId, createdAt])
+  @@index([authorId])
+  @@map("candidate_notes")
+}
+
+model CandidateConsent {
+  id            String         @id @default(cuid())
+  candidateId   String
+  purpose       ConsentPurpose
+  policyVersion String
+  source        ConsentSource
+  ipAddress     String?
+  userAgent     String?
+  grantedAt     DateTime       @default(now())
+  revokedAt     DateTime?
+  candidateJobId String? // inscrição em que o consentimento foi dado
+  candidate     Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  candidateJob  CandidateJob?  @relation(fields: [candidateJobId], references: [id], onDelete: SetNull)
+
+  @@index([candidateId, purpose])
+  @@index([candidateJobId])
+  @@map("candidate_consents")
+}
+
+// ─────────────────── Processo seletivo ───────────────────
+
+model RecruitmentStage {
+  id          String         @id @default(cuid())
+  key         String         @unique
+  name        String
+  order       Int
+  kind        StageKind      @default(OPEN)
+  stalledDays Int? // alerta de candidato parado; nulo = usa o padrão da empresa
+  active      Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  processes   CandidateJob[]
+  fromMoves   StageHistory[] @relation("FromStage")
+  toMoves     StageHistory[] @relation("ToStage")
+
+  @@index([order])
+  @@map("recruitment_stages")
+}
+
+model CandidateJob {
+  id          String          @id @default(cuid())
+  candidateId String
+  jobId       String
+  stageId     String
+  recruiterId String?
+  status      ProcessStatus   @default(ACTIVE)
+  source      CandidateSource
+  appliedAt   DateTime        @default(now())
+  lastMovedAt DateTime        @default(now())
+  hiredAt     DateTime?
+  closedAt    DateTime?
+  // Dados enviados nesta inscrição (independentes do cadastro geral do candidato)
+  salaryExpectation Decimal? @db.Decimal(10, 2)
+  currentlyEmployed Boolean?
+  resumeId          String?
+  applicantMessage  String?
+  ipAddress         String?
+  userAgent         String?
+
+  candidate  Candidate        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  resume     Attachment?      @relation("ApplicationResume", fields: [resumeId], references: [id], onDelete: SetNull)
+  consents   CandidateConsent[]
+  messages   Message[]
+  dispatches MessageDispatch[]
+  job        Job              @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  stage      RecruitmentStage @relation(fields: [stageId], references: [id])
+  recruiter  User?            @relation("ProcessRecruiter", fields: [recruiterId], references: [id], onDelete: SetNull)
+  history    StageHistory[]
+  interviews Interview[]
+  admission  Admission?
+  behavioralTests BehavioralTest[]
+
+  @@unique([candidateId, jobId])
+  @@index([jobId, stageId])
+  @@index([stageId, lastMovedAt])
+  @@index([recruiterId, status])
+  @@index([status, appliedAt])
+  @@index([hiredAt])
+  @@index([resumeId])
+  @@map("candidate_jobs")
+}
+
+model StageHistory {
+  id             String            @id @default(cuid())
+  candidateJobId String
+  fromStageId    String?
+  toStageId      String
+  movedById      String? // nulo = sistema (ex.: inscrição online)
+  note           String?
+  movedAt        DateTime          @default(now())
+
+  candidateJob CandidateJob      @relation(fields: [candidateJobId], references: [id], onDelete: Cascade)
+  fromStage    RecruitmentStage? @relation("FromStage", fields: [fromStageId], references: [id])
+  toStage      RecruitmentStage  @relation("ToStage", fields: [toStageId], references: [id])
+  movedBy      User?             @relation(fields: [movedById], references: [id], onDelete: SetNull)
+
+  @@index([candidateJobId, movedAt])
+  @@index([toStageId, movedAt])
+  @@index([fromStageId])
+  @@index([movedById])
+  @@map("stage_history")
+}
+
+// ─────────────────────── Entrevistas ───────────────────────
+
+model Interview {
+  id                String          @id @default(cuid())
+  candidateJobId    String
+  storeId           String
+  interviewerId     String?
+  scheduledAt       DateTime
+  durationMinutes   Int             @default(30)
+  mode              InterviewMode
+  meetingUrl        String?
+  location          String?
+  status            InterviewStatus @default(SCHEDULED)
+  notes             String?
+  rescheduledFromId String?         @unique
+  canceledReason    String?
+  reminderSentAt    DateTime?
+  createdById       String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  candidateJob    CandidateJob          @relation(fields: [candidateJobId], references: [id], onDelete: Cascade)
+  store           Store                 @relation(fields: [storeId], references: [id])
+  interviewer     User?                 @relation("Interviewer", fields: [interviewerId], references: [id], onDelete: SetNull)
+  createdBy       User?                 @relation("InterviewCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  rescheduledFrom Interview?            @relation("Reschedule", fields: [rescheduledFromId], references: [id], onDelete: SetNull)
+  rescheduledTo   Interview?            @relation("Reschedule")
+  evaluations     InterviewEvaluation[]
+  dispatches      MessageDispatch[]
+
+  @@index([scheduledAt, status])
+  @@index([interviewerId, scheduledAt])
+  @@index([storeId, scheduledAt])
+  @@index([candidateJobId])
+  @@index([createdById])
+  @@map("interviews")
+}
+
+model InterviewEvaluation {
+  id             String                  @id @default(cuid())
+  interviewId    String
+  evaluatorId    String?
+  communication  Int? // 1 a 5
+  experience     Int?
+  attitude       Int?
+  availability   Int?
+  overall        Int
+  recommendation InterviewRecommendation
+  comments       String?
+  createdAt      DateTime                @default(now())
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  evaluator User?     @relation(fields: [evaluatorId], references: [id], onDelete: SetNull)
+
+  @@index([interviewId])
+  @@index([evaluatorId])
+  @@map("interview_evaluations")
+}
+
+// ─────────────────────── Comunicação ───────────────────────
+
+model Conversation {
+  id              String             @id @default(cuid())
+  candidateId     String?
+  waContactE164   String             @unique
+  waContactName   String?
+  assignedToId    String?
+  status          ConversationStatus @default(OPEN)
+  lastMessageAt   DateTime?
+  lastInboundAt   DateTime? // controla a janela de 24 h da Meta
+  lastMessageText String?
+  unreadCount     Int                @default(0)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  candidate  Candidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  assignedTo User?      @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  messages   Message[]
+
+  @@index([candidateId])
+  @@index([assignedToId, lastMessageAt])
+  @@index([status, lastMessageAt])
+  @@map("conversations")
+}
+
+model Message {
+  id             String           @id @default(cuid())
+  conversationId String
+  direction      MessageDirection
+  waMessageId    String?          @unique
+  templateId     String?
+  templateParams Json?
+  body           String?
+  mediaType      String?
+  mediaId        String? // id da mídia na Meta (baixada sob demanda, com permissão)
+  mediaMime      String?
+  channel        MessageChannel   @default(API)
+  candidateJobId String? // candidatura a que a mensagem se refere
+  stageKey       String? // etapa do funil no momento do envio
+  status         MessageStatus
+  errorCode      String?
+  errorMessage   String?
+  attempts       Int              @default(0)
+  nextAttemptAt  DateTime?
+  sentById       String?
+  sentAt         DateTime?
+  deliveredAt    DateTime?
+  readAt         DateTime?
+  failedAt       DateTime?
+  createdAt      DateTime         @default(now())
+
+  conversation Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  template     MessageTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  sentBy       User?            @relation(fields: [sentById], references: [id], onDelete: SetNull)
+  candidateJob CandidateJob?    @relation(fields: [candidateJobId], references: [id], onDelete: SetNull)
+  dispatch     MessageDispatch?
+
+  @@index([conversationId, createdAt])
+  @@index([status, nextAttemptAt])
+  @@index([sentById])
+  @@index([templateId])
+  @@index([candidateJobId])
+  @@map("messages")
+}
+
+/// Regra de mensagem automática: qual evento gera qual mensagem.
+model AutomationRule {
+  id            String           @id @default(cuid())
+  event         String           @unique // stage:<etapa>, interview:online, interview:in_person, interview:rescheduled, interview:canceled, reminder:<minutos>
+  name          String
+  enabled       Boolean          @default(true)
+  templateId    String?
+  offsetMinutes Int? // lembretes: quanto antes da entrevista (ex.: 1440 = 24 h)
+  sort          Int              @default(0)
+  updatedById   String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  template   MessageTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  updatedBy  User?             @relation("AutomationUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  dispatches MessageDispatch[]
+
+  @@index([templateId])
+  @@index([updatedById])
+  @@map("automation_rules")
+}
+
+/// Fila de mensagens geradas pelas automações. A chave única impede duplicidade por candidatura e evento.
+model MessageDispatch {
+  id             String         @id @default(cuid())
+  ruleId         String
+  candidateJobId String
+  interviewId    String?
+  dedupeKey      String         @unique
+  stageKey       String?
+  status         DispatchStatus @default(PENDING)
+  dueAt          DateTime       @default(now())
+  reason         String? // por que está bloqueada, pulada ou cancelada
+  body           String? // texto enviado (congelado no momento do envio)
+  messageId      String?        @unique
+  sentById       String?
+  sentAt         DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  rule         AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  candidateJob CandidateJob   @relation(fields: [candidateJobId], references: [id], onDelete: Cascade)
+  interview    Interview?     @relation(fields: [interviewId], references: [id], onDelete: SetNull)
+  message      Message?       @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  sentBy       User?          @relation("DispatchSentBy", fields: [sentById], references: [id], onDelete: SetNull)
+
+  @@index([status, dueAt])
+  @@index([candidateJobId])
+  @@index([interviewId])
+  @@index([ruleId])
+  @@index([sentById])
+  @@map("message_dispatches")
+}
+
+model MessageTemplate {
+  id           String           @id @default(cuid())
+  key          String           @unique
+  name         String
+  purpose      String // convocação, lembrete, aprovação...
+  body         String // texto com variáveis {{1}}, {{2}}
+  language     String           @default("pt_BR")
+  category     TemplateCategory @default(UTILITY)
+  metaName     String? // nome do template na Meta
+  approval     TemplateApproval @default(LOCAL_ONLY)
+  variables    Json? // ordem das variáveis: ["nome", "vaga", ...] → {{1}}, {{2}}
+  rejectionReason String?
+  lastSyncedAt DateTime?
+  active       Boolean          @default(true)
+  updatedById  String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  updatedBy User?            @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  messages  Message[]
+  rules     AutomationRule[]
+
+  @@index([updatedById])
+  @@map("message_templates")
+}
+
+model WhatsAppIntegration {
+  id                  String            @id @default("default")
+  appId               String?
+  wabaId              String?
+  phoneNumberId       String?
+  displayPhone        String?
+  accessTokenEnc      String? // AES-256-GCM
+  appSecretEnc        String? // AES-256-GCM
+  verifyTokenHash     String? // SHA-256
+  accessTokenLast4    String?
+  verifiedName        String? // nome comercial verificado na Meta
+  qualityRating       String?
+  lastWebhookAt       DateTime? // último evento recebido (mostra que o webhook está ativo)
+  status              IntegrationStatus @default(NOT_CONNECTED)
+  lastCheckedAt       DateTime?
+  lastError           String?
+  updatedAt           DateTime          @updatedAt
+
+  @@map("whatsapp_integration")
+}
+
+model WebhookEvent {
+  id          String    @id @default(cuid())
+  provider    String    @default("whatsapp")
+  eventKey    String    @unique // id da mensagem ou do status
+  eventType   String
+  payload     Json
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+  attempts    Int       @default(0)
+  error       String?
+
+  @@index([processedAt, receivedAt])
+  @@map("webhook_events")
+}
+
+// ───────────────────── Rastreio e alertas ─────────────────────
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  actorId    String? // nulo = sistema
+  action     String // ex.: user.create, job.close
+  entityType String
+  entityId   String?
+  storeId    String? // permite filtrar o histórico pelo escopo de loja
+  summary    String
+  before     Json?
+  after      Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([storeId, createdAt])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String?
+  link      String?
+  dedupeKey String? // evita alertas repetidos (ex.: entrevista X, 24 h)
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+// ─────────────────── Admissão (documentos do contratado) ───────────────────
+
+model Admission {
+  id                 String          @id @default(cuid())
+  candidateJobId     String          @unique
+  status             AdmissionStatus @default(PENDING)
+  // Link: guardamos o "nonce" e o hash do token. O token é nonce + assinatura com segredo do servidor,
+  // então o link pode ser mostrado de novo sem ficar gravado em claro.
+  tokenNonce         String?
+  tokenHash          String?         @unique
+  tokenExpiresAt     DateTime?
+  linkCreatedAt      DateTime?
+  linkCreatedById    String?
+  lastOpenedAt       DateTime?
+  submittedAt        DateTime?
+  completedAt        DateTime?
+  reviewNote         String? // recado do RH ao devolver para correção
+  // Dados preenchidos pelo contratado
+  email              String?
+  race               String?
+  uniformSize        String?
+  education          String?
+  pisNis             String?
+  maritalStatus      String?
+  children           Json? // [{ name, cpf, birthDate }]
+  spouseName         String?
+  spouseCpf          String?
+  spouseBirthDate    String? // AAAA-MM-DD
+  needsTransport     Boolean?
+  busesPerDay        Int?
+  transportDailyCost Decimal?        @db.Decimal(10, 2)
+  bankAccount        String?
+  bankBranch         String?
+  pixKey             String?
+  privacyAcceptedAt  DateTime?
+  ipAddress          String?
+  userAgent          String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  candidateJob  CandidateJob    @relation(fields: [candidateJobId], references: [id], onDelete: Cascade)
+  linkCreatedBy User?           @relation("AdmissionLinkCreator", fields: [linkCreatedById], references: [id], onDelete: SetNull)
+  files         AdmissionFile[]
+
+  @@index([status])
+  @@index([linkCreatedById])
+  @@map("admissions")
+}
+
+model AdmissionFile {
+  id              String              @id @default(cuid())
+  admissionId     String
+  kind            AdmissionDocKind
+  storageKey      String              @unique
+  fileName        String
+  mimeType        String
+  sizeBytes       Int
+  sha256          String
+  status          AdmissionFileStatus @default(PENDING)
+  rejectionReason String?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  createdAt       DateTime            @default(now())
+
+  admission  Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  reviewedBy User?     @relation("AdmissionFileReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([admissionId, kind])
+  @@index([reviewedById])
+  @@map("admission_files")
+}
+
+// ─────────────────── Teste comportamental ───────────────────
+
+model BehavioralTest {
+  id             String               @id @default(cuid())
+  candidateId    String
+  candidateJobId String? // vaga para a qual o candidato concorre (opcional)
+  version        String // versão do questionário (as regras de pontuação ficam no código, por versão)
+  status         BehavioralTestStatus @default(SENT)
+  tokenNonce     String?
+  tokenHash      String?              @unique
+  expiresAt      DateTime
+  sentAt         DateTime             @default(now())
+  startedAt      DateTime?
+  completedAt    DateTime?
+  canceledAt     DateTime?
+  answers        Json? // índices das alternativas escolhidas, na ordem das perguntas
+  result         Json? // notas por competência, perfil, pontos fortes e de atenção, gravados na conclusão
+  overall        Int?
+  profile        String?
+  createdById    String?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  candidate    Candidate     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  candidateJob CandidateJob? @relation(fields: [candidateJobId], references: [id], onDelete: SetNull)
+  createdBy    User?         @relation("BehavioralTestCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([candidateId, createdAt])
+  @@index([candidateJobId])
+  @@index([status, sentAt])
+  @@index([createdById])
+  @@map("behavioral_tests")
+}

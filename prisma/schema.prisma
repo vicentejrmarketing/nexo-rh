@@ -171,6 +171,12 @@ enum NotificationType {
   SYSTEM
 }
 
+enum BehavioralTestStatus {
+  SENT // link gerado, aguardando resposta
+  COMPLETED
+  CANCELED // substituído por um novo teste
+}
+
 enum AdmissionStatus {
   PENDING // link gerado, aguardando o contratado
   SUBMITTED // enviado: o RH precisa conferir
@@ -264,6 +270,7 @@ model User {
   managedStores       Store[]               @relation("StoreManager")
   admissionLinks      Admission[]           @relation("AdmissionLinkCreator")
   admissionReviews    AdmissionFile[]       @relation("AdmissionFileReviewer")
+  behavioralTestsSent BehavioralTest[]      @relation("BehavioralTestCreator")
   recruiterJobs       Job[]                 @relation("JobRecruiter")
   createdJobs         Job[]                 @relation("JobCreatedBy")
   ownedCandidates     Candidate[]           @relation("CandidateOwner")
@@ -514,6 +521,7 @@ model Candidate {
   notes           CandidateNote[]
   conversations   Conversation[]
   privacyRequests PrivacyRequest[]
+  behavioralTests BehavioralTest[]
 
   @@index([cpf])
   @@index([phoneE164])
@@ -655,6 +663,7 @@ model CandidateJob {
   history    StageHistory[]
   interviews Interview[]
   admission  Admission?
+  behavioralTests BehavioralTest[]
 
   @@unique([candidateId, jobId])
   @@index([jobId, stageId])
@@ -1040,4 +1049,40 @@ model AdmissionFile {
   @@index([admissionId, kind])
   @@index([reviewedById])
   @@map("admission_files")
+}
+
+// ─────────────────── Teste comportamental ───────────────────
+
+model BehavioralTest {
+  id             String               @id @default(cuid())
+  candidateId    String
+  candidateJobId String? // vaga para a qual o candidato concorre (opcional)
+  version        String // versão do questionário (as regras de pontuação ficam no código, por versão)
+  status         BehavioralTestStatus @default(SENT)
+  tokenNonce     String?
+  tokenHash      String?              @unique
+  expiresAt      DateTime
+  sentAt         DateTime             @default(now())
+  startedAt      DateTime?
+  completedAt    DateTime?
+  canceledAt     DateTime?
+  answers        Json? // índices das alternativas escolhidas, na ordem das perguntas
+  result         Json? // notas por competência, perfil, pontos fortes e de atenção, gravados na conclusão
+  overall        Int?
+  profile        String?
+  createdById    String?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  candidate    Candidate     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  candidateJob CandidateJob? @relation(fields: [candidateJobId], references: [id], onDelete: SetNull)
+  createdBy    User?         @relation("BehavioralTestCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([candidateId, createdAt])
+  @@index([candidateJobId])
+  @@index([status, sentAt])
+  @@index([createdById])
+  @@map("behavioral_tests")
 }

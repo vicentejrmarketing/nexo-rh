@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowSquareOut, Briefcase, CalendarDots, CaretDown, ChartBar, ChatCircleText, Funnel, GearSix, Globe, House, Key, List, SignOut, SlidersHorizontal, Storefront,
-  IdentificationCard, UsersFour, UsersThree, X, type Icon,
+  Brain, IdentificationCard, UsersFour, UsersThree, X, type Icon,
 } from "@phosphor-icons/react";
 import { Logo } from "@/components/brand/logo";
 import { cn } from "@/components/ui";
@@ -14,7 +14,7 @@ import { logoutAction } from "@/app/(auth)/actions";
 
 const ICONS: Record<NavIcon, Icon> = {
   home: House, jobs: Briefcase, candidates: UsersThree, funnel: Funnel, talent: UsersFour,
-  interviews: CalendarDots, messages: ChatCircleText, stores: Storefront, reports: ChartBar, settings: GearSix, site: Globe, hired: IdentificationCard,
+  interviews: CalendarDots, messages: ChatCircleText, stores: Storefront, reports: ChartBar, settings: GearSix, site: Globe, hired: IdentificationCard, behavior: Brain,
 };
 
 type Item = { href: string; label: string; icon: NavIcon; badge?: number; external?: boolean; manageHref?: string };

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import {
-  Building2, ChevronRight, History, KeyRound, ListOrdered, MessageSquareText, BriefcaseBusiness, ShieldCheck, Store, Users, Smartphone,
+  Brain, Building2, ChevronRight, History, KeyRound, ListOrdered, MessageSquareText, BriefcaseBusiness, ShieldCheck, Store, Users, Smartphone,
   type LucideIcon,
 } from "lucide-react";
 import { Badge, Card, PageHeader, PageSkeleton } from "@/components/ui";
@@ -26,6 +26,7 @@ const SECTIONS: Section[] = [
   { title: "Cargos", description: "Cargos usados nas vagas e no cadastro de candidatos.", icon: BriefcaseBusiness, href: "/configuracoes/cargos", anyOf: ["settings.manage"] },
   { title: "Dados da empresa e LGPD", description: "Razão social, contato, política de privacidade e retenção.", icon: Building2, href: "/configuracoes/empresa", anyOf: ["settings.manage"] },
   { title: "Mensagens automáticas", description: "O que enviar em cada etapa, entrevistas e lembretes.", icon: MessageSquareText, href: "/configuracoes/automacoes", anyOf: ["templates.manage"] },
+  { title: "Teste comportamental", description: "Perguntas, pontos de cada alternativa e regras do cálculo.", icon: Brain, href: "/configuracoes/teste-comportamental", anyOf: ["behavioral.view"] },
   { title: "Modelos de mensagens", description: "Textos de convocação, lembrete, aprovação e reprovação.", icon: MessageSquareText, href: "/configuracoes/modelos", anyOf: ["templates.manage"] },
 ];
 
