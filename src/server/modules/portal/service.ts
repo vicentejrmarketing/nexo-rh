@@ -1,4 +1,5 @@
 import "server-only";
+import { roleKeyIn } from "@/server/authz/catalog";
 import { cpfDigits, isValidCpf } from "@/lib/cpf";
 import { ensureDefaultRules, onStageEntered } from "@/server/modules/automations/service";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
@@ -395,7 +396,7 @@ export async function submitApplication(slug: string, raw: ApplyInput, resume: R
       // 8) Notificação: responsável pela vaga; sem responsável, gestor da loja e gestão de RH.
       let recipients = job.recruiterId ? [job.recruiterId] : [];
       if (!recipients.length) {
-        const hr = await tx.user.findMany({ where: { status: "ACTIVE", role: { key: { in: ["HR_MANAGER", "ADMIN"] } } }, select: { id: true } });
+        const hr = await tx.user.findMany({ where: { status: "ACTIVE", role: roleKeyIn(["HR_MANAGER", "ADMIN"]) }, select: { id: true } });
         recipients = [...new Set([...(job.store.managerId ? [job.store.managerId] : []), ...hr.map((u) => u.id)])];
       }
       const active = await tx.user.findMany({ where: { id: { in: recipients }, status: "ACTIVE" }, select: { id: true } });
@@ -448,7 +449,7 @@ export async function createPrivacyRequest(raw: z.input<typeof privacySchema>, m
   });
   return db.$transaction(async (tx) => {
     const req = await tx.privacyRequest.create({ data: { fullName: d.fullName, phoneE164: d.phone, email: d.email, message: d.message, candidateId: match?.id ?? null, ipAddress: meta.ip } });
-    const managers = await tx.user.findMany({ where: { status: "ACTIVE", role: { key: { in: ["ADMIN", "HR_MANAGER"] } } }, select: { id: true } });
+    const managers = await tx.user.findMany({ where: { status: "ACTIVE", role: roleKeyIn(["ADMIN", "HR_MANAGER"]) }, select: { id: true } });
     if (managers.length) {
       await tx.notification.createMany({
         data: managers.map((u) => ({ userId: u.id, type: "SYSTEM" as const, title: "Pedido de exclusão de dados (LGPD)", body: d.fullName, link: "/site-de-vagas/privacidade" })),

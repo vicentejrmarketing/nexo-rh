@@ -4,15 +4,14 @@ import { redirect } from "next/navigation";
 import { db } from "@/server/db/client";
 import { AppError } from "@/server/errors";
 import type { Actor } from "@/server/authz/authorize";
-import type { PermissionKey, RoleKey } from "@/server/authz/catalog";
+import { baseRoleKey, type PermissionKey } from "@/server/authz/catalog";
 import { validateSessionCookie } from "./session";
 
 export async function loadActorById(userId: string): Promise<Actor | null> {
   const user = await db.user.findUnique({
     where: { id: userId },
     select: {
-      id: true, name: true, email: true, status: true, mustChangePassword: true, customPermissions: true,
-      permissions: { select: { permission: { select: { key: true } } } },
+      id: true, name: true, email: true, status: true, mustChangePassword: true,
       role: { select: { key: true, name: true, allStores: true, permissions: { select: { permission: { select: { key: true } } } } } },
       stores: { select: { storeId: true } },
     },
@@ -22,14 +21,11 @@ export async function loadActorById(userId: string): Promise<Actor | null> {
     id: user.id,
     name: user.name,
     email: user.email,
-    roleKey: user.role.key as RoleKey,
+    roleKey: baseRoleKey(user.role.key),
     roleName: user.role.name,
     allStores: user.role.allStores,
     storeIds: user.stores.map((s) => s.storeId),
-    // Acesso personalizado vale para todos os perfis, menos Administrador (sempre acesso total pelo perfil).
-    permissions: new Set(
-      (user.customPermissions && user.role.key !== "ADMIN" ? user.permissions : user.role.permissions).map((p) => p.permission.key as PermissionKey),
-    ),
+    permissions: new Set(user.role.permissions.map((p) => p.permission.key as PermissionKey)),
     mustChangePassword: user.mustChangePassword,
   };
 }

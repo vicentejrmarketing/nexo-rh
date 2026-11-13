@@ -5,7 +5,7 @@ import { db } from "@/server/db/client";
 import { audit } from "@/server/audit/log";
 import { authorize, canAccessStore, type Actor } from "@/server/authz/authorize";
 import { canEditJob, visibleJobsWhere } from "@/server/authz/scopes";
-import { ROLES } from "@/server/authz/catalog";
+import { ROLES, roleKeyIn } from "@/server/authz/catalog";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/server/errors";
 import { fieldErrorsOf } from "@/server/modules/users/schemas";
 import { parseMoneyBR } from "@/lib/form";
@@ -141,7 +141,7 @@ export async function jobFormOptions(actor: Actor) {
     db.store.findMany({ where: { status: "ACTIVE", ...(actor.allStores ? {} : { id: { in: actor.storeIds } }) }, select: { id: true, name: true, city: true }, orderBy: { name: "asc" } }),
     db.position.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     db.user.findMany({
-      where: { status: "ACTIVE", role: { key: { in: ["RECRUITER", "HR_MANAGER", "ADMIN"] } } },
+      where: { status: "ACTIVE", role: roleKeyIn(["RECRUITER", "HR_MANAGER", "ADMIN"]) },
       select: { id: true, name: true, role: { select: { name: true } } },
       orderBy: { name: "asc" },
     }),

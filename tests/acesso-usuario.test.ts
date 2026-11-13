@@ -25,6 +25,13 @@ describe("acesso personalizado", () => {
     const { user } = await createUser(admin, { ...base(store.id), customPermissions: true, permissions: ["candidates.update", "jobs.view"] });
     const actor = (await loadActorById(user.id))!;
     expect([...actor.permissions].sort()).toEqual(["candidates.update", "candidates.view", "jobs.view"]);
+    expect(actor.roleKey).toBe("RECRUITER"); // comportamento do perfil base (só os próprios processos)
+    expect(actor.roleName).toBe("Recrutador");
+    // O perfil próprio não aparece na lista de perfis nem na matriz de permissões
+    const { listRoles, listUsers } = await import("@/server/modules/users/service");
+    expect((await listRoles()).map((r) => r.key)).not.toContain(`RECRUITER~${user.id}`);
+    const row = (await listUsers(admin, { roleKey: "RECRUITER" })).find((u) => u.id === user.id)!;
+    expect(row).toMatchObject({ customPermissions: true, role: { key: "RECRUITER", name: "Recrutador" } });
     await expect(createJob(actor, { title: "Caixa", description: "Operação de caixa.", openings: "1", storeId: store.id, priority: "MEDIUM" })).rejects.toBeInstanceOf(ForbiddenError);
     const log = await db.activityLog.findFirstOrThrow({ where: { action: "user.create", entityId: user.id } });
     expect((log.after as { access: string[] }).access).toContain("candidates.update");
@@ -38,7 +45,7 @@ describe("acesso personalizado", () => {
     const role = await db.role.findUniqueOrThrow({ where: { key: "RECRUITER" }, include: { permissions: { include: { permission: true } } } });
     const actor = (await loadActorById(user.id))!;
     expect([...actor.permissions].sort()).toEqual(role.permissions.map((p) => p.permission.key).sort());
-    expect(await db.userPermission.count({ where: { userId: user.id } })).toBe(0);
+    expect(await db.role.count({ where: { isSystem: false } })).toBe(0); // perfil próprio removido
     const { user: adm } = await createUser(admin, { ...base(store.id), roleKey: "ADMIN", customPermissions: true, permissions: ["dashboard.view"] });
     expect((await loadActorById(adm.id))!.permissions.size).toBe(ALL_PERMISSIONS.length);
   });
@@ -66,5 +73,18 @@ describe("acesso personalizado", () => {
     const editorActor = (await loadActorById(editor.id))!;
     await updateUser(editorActor, user.id, { name: "Carla S.", roleKey: "RECRUITER", storeIds: [store.id], status: "ACTIVE" });
     expect([...(await loadActorById(user.id))!.permissions]).toEqual(["jobs.view"]);
+  });
+});
+
+describe("perfil próprio e o resto do sistema", () => {
+  it("recrutador personalizado continua aparecendo como recrutador nas listas; excluir o usuário remove o perfil próprio", async () => {
+    const admin = await adminActor();
+    const store = await makeStore("Loja Centro");
+    const { user } = await createUser(admin, { ...base(store.id), customPermissions: true, permissions: ["pipeline.view"] });
+    const { candidateFormOptions } = await import("@/server/modules/candidates/service");
+    expect((await candidateFormOptions(admin)).owners.map((r) => r.id)).toContain(user.id);
+    const { deleteUser } = await import("@/server/modules/users/service");
+    await deleteUser(admin, user.id);
+    expect(await db.role.count({ where: { isSystem: false } })).toBe(0);
   });
 });

@@ -7,7 +7,7 @@ import { db, type Tx } from "@/server/db/client";
 import { audit } from "@/server/audit/log";
 import { authorize, canAccessStore, type Actor } from "@/server/authz/authorize";
 import { canEditCandidate, canEditJob, visibleCandidatesWhere, visibleJobsWhere } from "@/server/authz/scopes";
-import { ROLES } from "@/server/authz/catalog";
+import { ROLES, roleKeyIn } from "@/server/authz/catalog";
 import { AppError, ForbiddenError, NotFoundError, ValidationError } from "@/server/errors";
 import { fieldErrorsOf } from "@/server/modules/users/schemas";
 import { getCompanySettings } from "@/server/modules/settings/service";
@@ -353,7 +353,7 @@ export async function candidateFormOptions(actor: Actor) {
   const [stores, positions, owners] = await Promise.all([
     db.store.findMany({ where: { status: "ACTIVE" }, select: { id: true, name: true, city: true }, orderBy: { name: "asc" } }),
     db.position.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    db.user.findMany({ where: { status: "ACTIVE", role: { key: { in: ["RECRUITER", "HR_MANAGER", "ADMIN"] } } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    db.user.findMany({ where: { status: "ACTIVE", role: roleKeyIn(["RECRUITER", "HR_MANAGER", "ADMIN"]) }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
   // Lojas: todas aparecem como "loja desejada" (o candidato pode querer qualquer uma),
   // mas quem não vê todas precisa escolher uma das suas ou ficar como responsável.

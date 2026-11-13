@@ -1,4 +1,5 @@
 import "server-only";
+import { roleKeyIn } from "@/server/authz/catalog";
 import { ensureAlerts } from "@/server/modules/alerts/service";
 import { unreadTotal } from "@/server/modules/messages/service";
 import { pendingCount } from "@/server/modules/automations/service";
@@ -204,7 +205,7 @@ export async function getFilterOptions(actor: Actor) {
     base.kind === "stores" && base.ownerId
       ? Promise.resolve([])
       : db.user.findMany({
-          where: { status: "ACTIVE", role: { key: "RECRUITER" }, ...(base.kind === "stores" ? { stores: { some: { storeId: { in: base.storeIds } } } } : {}) },
+          where: { status: "ACTIVE", role: roleKeyIn(["RECRUITER"]), ...(base.kind === "stores" ? { stores: { some: { storeId: { in: base.storeIds } } } } : {}) },
           select: { id: true, name: true },
           orderBy: { name: "asc" },
         }),

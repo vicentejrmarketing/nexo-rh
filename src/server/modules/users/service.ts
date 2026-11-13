@@ -3,7 +3,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/server/db/client";
 import { audit } from "@/server/audit/log";
 import { authorize, can, type Actor } from "@/server/authz/authorize";
-import { ADMIN_LOCKED, PERMISSIONS, withDependencies, type PermissionKey, type RoleKey } from "@/server/authz/catalog";
+import { ADMIN_LOCKED, CUSTOM_SEP, PERMISSIONS, ROLE_KEYS, baseRoleKey, customRoleKey, isCustomRoleKey, roleKeyIn, withDependencies, type PermissionKey, type RoleKey } from "@/server/authz/catalog";
 import { AppError, ForbiddenError, NotFoundError, ValidationError } from "@/server/errors";
 import { generateTemporaryPassword, hashPassword } from "@/server/auth/password";
 import { revokeAllSessions } from "@/server/auth/session";
@@ -12,13 +12,22 @@ import { createUserSchema, fieldErrorsOf, updateUserSchema, type CreateUserInput
 const userSelect = {
   id: true, name: true, email: true, phone: true, status: true, mustChangePassword: true,
   lastLoginAt: true, createdAt: true,
-  role: { select: { key: true, name: true } },
+  role: { select: { key: true, name: true, isSystem: true, permissions: { select: { permission: { select: { key: true } } } } } },
   stores: { select: { store: { select: { id: true, name: true, city: true } } } },
-  customPermissions: true,
-  permissions: { select: { permission: { select: { key: true } } } },
 } satisfies Prisma.UserSelect;
 
-export type UserRow = Prisma.UserGetPayload<{ select: typeof userSelect }>;
+/** Expõe o perfil base e, se houver, o acesso personalizado (perfil próprio do usuário). */
+function present<T extends Prisma.UserGetPayload<{ select: typeof userSelect }>>(u: T) {
+  const custom = !u.role.isSystem && isCustomRoleKey(u.role.key);
+  return {
+    ...u,
+    role: { key: baseRoleKey(u.role.key), name: u.role.name },
+    customPermissions: custom,
+    permissions: custom ? u.role.permissions.map((p) => p.permission.key) : [],
+  };
+}
+
+export type UserRow = ReturnType<typeof present>;
 
 /** Quem não vê todas as lojas enxerga os usuários que compartilham ao menos uma loja (e a si mesmo). */
 function visibleUsersWhere(actor: Actor): Prisma.UserWhereInput {
@@ -31,20 +40,20 @@ export async function listUsers(actor: Actor, filters: { q?: string; roleKey?: s
   const where: Prisma.UserWhereInput = { AND: [visibleUsersWhere(actor)] };
   const q = filters.q?.trim();
   if (q) (where.AND as Prisma.UserWhereInput[]).push({ OR: [{ name: { contains: q, mode: "insensitive" } }, { email: { contains: q.toLowerCase() } }] });
-  if (filters.roleKey) (where.AND as Prisma.UserWhereInput[]).push({ role: { key: filters.roleKey } });
+  if (filters.roleKey && (ROLE_KEYS as readonly string[]).includes(filters.roleKey)) (where.AND as Prisma.UserWhereInput[]).push({ role: roleKeyIn([filters.roleKey as RoleKey]) });
   if (filters.status === "ACTIVE" || filters.status === "INACTIVE") (where.AND as Prisma.UserWhereInput[]).push({ status: filters.status });
-  return db.user.findMany({ where, select: userSelect, orderBy: [{ status: "asc" }, { name: "asc" }], take: 500 });
+  return (await db.user.findMany({ where, select: userSelect, orderBy: [{ status: "asc" }, { name: "asc" }], take: 500 })).map(present);
 }
 
 export async function getUser(actor: Actor, id: string) {
   authorize(actor, "users.view");
   const user = await db.user.findFirst({ where: { AND: [{ id }, visibleUsersWhere(actor)] }, select: userSelect });
   if (!user) throw new NotFoundError("Usuário não encontrado.");
-  return user;
+  return present(user);
 }
 
 export async function listRoles() {
-  return db.role.findMany({ select: { id: true, key: true, name: true, description: true, allStores: true }, orderBy: { createdAt: "asc" } });
+  return db.role.findMany({ where: { isSystem: true }, select: { id: true, key: true, name: true, description: true, allStores: true }, orderBy: { createdAt: "asc" } });
 }
 
 export async function listAssignableStores(actor: Actor) {
@@ -85,12 +94,12 @@ export async function createUser(actor: Actor, raw: CreateUserInput, ip?: string
       const created = await tx.user.create({
         data: {
           name: input.name, email: input.email, phone: input.phone ?? null, roleId: role.id, passwordHash,
-          mustChangePassword: true, customPermissions: custom !== null,
+          mustChangePassword: true,
           stores: { create: storeIds.map((storeId) => ({ storeId })) },
         },
         select: { id: true, name: true, email: true },
       });
-      await writeUserPermissions(tx, created.id, custom);
+      if (custom) await applyAccess(tx, created.id, role, custom);
       await audit(tx, {
         actorId: actor.id, action: "user.create", entityType: "User", entityId: created.id, ipAddress: ip,
         summary: `Criou o usuário ${created.name} (${role.name})`,
@@ -120,11 +129,31 @@ function resolveCustomAccess(actor: Actor, roleKey: RoleKey, custom: boolean | u
   return list;
 }
 
-async function writeUserPermissions(tx: Prisma.TransactionClient, userId: string, keys: PermissionKey[] | null) {
-  await tx.userPermission.deleteMany({ where: { userId } });
-  if (!keys?.length) return;
-  const perms = await tx.permission.findMany({ where: { key: { in: keys } }, select: { id: true } });
-  await tx.userPermission.createMany({ data: perms.map((p) => ({ userId, permissionId: p.id })) });
+/**
+ * Aplica o acesso: no padrão, o usuário fica no perfil base; personalizado, ganha um perfil próprio
+ * (não listado) com as permissões escolhidas e o mesmo comportamento do perfil base.
+ */
+async function applyAccess(tx: Prisma.TransactionClient, userId: string, base: { id: string; key: string; name: string; allStores: boolean }, keys: PermissionKey[] | null) {
+  if (!keys) {
+    await tx.user.update({ where: { id: userId }, data: { roleId: base.id } });
+  } else {
+    const key = customRoleKey(base.key as RoleKey, userId);
+    const role = await tx.role.upsert({
+      where: { key },
+      update: { name: base.name, allStores: base.allStores },
+      create: { key, name: base.name, description: "Acesso personalizado", allStores: base.allStores, isSystem: false },
+    });
+    await tx.rolePermission.deleteMany({ where: { roleId: role.id } });
+    if (keys.length) {
+      const perms = await tx.permission.findMany({ where: { key: { in: keys } }, select: { id: true } });
+      await tx.rolePermission.createMany({ data: perms.map((p) => ({ roleId: role.id, permissionId: p.id })) });
+    }
+    await tx.user.update({ where: { id: userId }, data: { roleId: role.id } });
+  }
+  // Perfis próprios que deixaram de ser usados (voltou ao padrão ou trocou de perfil base) são removidos.
+  await tx.role.deleteMany({
+    where: { isSystem: false, key: { endsWith: `${CUSTOM_SEP}${userId}` }, ...(keys ? { NOT: { key: customRoleKey(base.key as RoleKey, userId) } } : {}), users: { none: {} } },
+  });
 }
 
 async function countActiveAdmins(excludeUserId?: string) {
@@ -139,14 +168,16 @@ export async function updateUser(actor: Actor, id: string, raw: UpdateUserInput,
   const current = await db.user.findUnique({
     where: { id },
     select: {
-      id: true, name: true, phone: true, status: true, role: { select: { key: true } }, stores: { select: { storeId: true } },
-      customPermissions: true, permissions: { select: { permission: { select: { key: true } } } },
+      id: true, name: true, phone: true, status: true, stores: { select: { storeId: true } },
+      role: { select: { key: true, isSystem: true, permissions: { select: { permission: { select: { key: true } } } } } },
     },
   });
   if (!current) throw new NotFoundError("Usuário não encontrado.");
+  const currentIsCustom = !current.role.isSystem && isCustomRoleKey(current.role.key);
+  current.role.key = baseRoleKey(current.role.key);
   // Sem permissão para gerenciar permissões, o acesso individual atual é mantido como está.
   const managesAccess = actor.permissions.has("permissions.manage");
-  const currentCustom = current.customPermissions ? withDependencies(current.permissions.map((p) => p.permission.key)) : null;
+  const currentCustom = currentIsCustom ? withDependencies(current.role.permissions.map((p) => p.permission.key)) : null;
   const custom = managesAccess
     ? resolveCustomAccess(actor, input.roleKey, input.customPermissions, input.permissions)
     : input.roleKey === "ADMIN" ? null : currentCustom;
@@ -176,9 +207,9 @@ export async function updateUser(actor: Actor, id: string, raw: UpdateUserInput,
   await db.$transaction(async (tx) => {
     await tx.user.update({
       where: { id },
-      data: { name: input.name, phone: input.phone ?? null, status: input.status, roleId: role.id, customPermissions: custom !== null },
+      data: { name: input.name, phone: input.phone ?? null, status: input.status },
     });
-    await writeUserPermissions(tx, id, custom);
+    await applyAccess(tx, id, role, custom);
     await tx.userStore.deleteMany({ where: { userId: id } });
     if (storeIds.length) await tx.userStore.createMany({ data: storeIds.map((storeId) => ({ userId: id, storeId })) });
     await audit(tx, {
@@ -209,12 +240,13 @@ export async function deleteUser(actor: Actor, id: string, ip?: string | null) {
   if (id === actor.id) throw new ForbiddenError("Você não pode excluir o seu próprio usuário.");
   const user = await db.user.findUnique({ where: { id }, select: { id: true, name: true, email: true, role: { select: { key: true } } } });
   if (!user) throw new NotFoundError("Usuário não encontrado.");
-  if (user.role.key === "ADMIN" && (await countActiveAdmins(id)) === 0) {
+  if (baseRoleKey(user.role.key) === "ADMIN" && (await countActiveAdmins(id)) === 0) {
     throw new ForbiddenError("O sistema precisa de pelo menos um administrador ativo.");
   }
   await db.$transaction(async (tx) => {
     // Registros ligados ao usuário (vagas, notas, movimentações) são preservados com o vínculo removido.
     await tx.user.delete({ where: { id } });
+    await tx.role.deleteMany({ where: { isSystem: false, key: { endsWith: `${CUSTOM_SEP}${id}` }, users: { none: {} } } });
     await audit(tx, {
       actorId: actor.id, action: "user.delete", entityType: "User", entityId: id, ipAddress: ip,
       summary: `Excluiu o usuário ${user.name}`, before: { name: user.name, email: user.email, role: user.role.key },
@@ -228,6 +260,7 @@ export async function getPermissionMatrix(actor: Actor) {
   if (!can(actor, "permissions.manage") && !can(actor, "users.view")) throw new ForbiddenError();
   const [roles, permissions] = await Promise.all([
     db.role.findMany({
+      where: { isSystem: true },
       select: { id: true, key: true, name: true, allStores: true, permissions: { select: { permission: { select: { key: true } } } } },
       orderBy: { createdAt: "asc" },
     }),
@@ -271,7 +304,7 @@ export async function setRolePermission(actor: Actor, roleKey: RoleKey, permissi
 /** Dados para escolher o acesso individual no formulário de usuário. */
 export async function accessOptions(actor: Actor) {
   authorize(actor, "users.view");
-  const roles = await db.role.findMany({ select: { key: true, permissions: { select: { permission: { select: { key: true } } } } } });
+  const roles = await db.role.findMany({ where: { isSystem: true }, select: { key: true, permissions: { select: { permission: { select: { key: true } } } } } });
   return {
     catalog: Object.entries(PERMISSIONS).map(([key, p]) => ({ key, module: p.module, description: p.description })),
     roleDefaults: Object.fromEntries(roles.map((r) => [r.key, r.permissions.map((p) => p.permission.key)])) as Record<string, string[]>,

@@ -79,6 +79,15 @@ export function withDependencies(keys: Iterable<string>): PermissionKey[] {
 export const ROLE_KEYS = ["ADMIN", "HR_MANAGER", "RECRUITER", "STORE_MANAGER"] as const;
 export type RoleKey = (typeof ROLE_KEYS)[number];
 
+// Acesso personalizado: o usuário ganha um perfil próprio (não listado) com a chave "BASE~idDoUsuario".
+// O comportamento (lojas, só os próprios processos) vem do perfil base; as permissões, do perfil próprio.
+export const CUSTOM_SEP = "~";
+export const customRoleKey = (base: RoleKey, userId: string) => `${base}${CUSTOM_SEP}${userId}`;
+export const baseRoleKey = (key: string) => key.split(CUSTOM_SEP)[0] as RoleKey;
+export const isCustomRoleKey = (key: string) => key.includes(CUSTOM_SEP);
+/** Filtro Prisma de perfil que também pega os perfis próprios derivados das bases informadas. */
+export const roleKeyIn = (bases: RoleKey[]) => ({ OR: bases.flatMap((k) => [{ key: k }, { key: { startsWith: `${k}${CUSTOM_SEP}` } }]) });
+
 type RoleDef = {
   name: string;
   description: string;

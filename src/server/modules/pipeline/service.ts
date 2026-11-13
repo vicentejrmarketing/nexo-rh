@@ -4,7 +4,7 @@ import type { Prisma, ProcessStatus, StageKind } from "@/generated/prisma/client
 import { db } from "@/server/db/client";
 import { audit } from "@/server/audit/log";
 import { authorize, type Actor } from "@/server/authz/authorize";
-import { ROLES } from "@/server/authz/catalog";
+import { ROLES, roleKeyIn } from "@/server/authz/catalog";
 import { visibleJobsWhere } from "@/server/authz/scopes";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/server/errors";
 import { getCompanySettings } from "@/server/modules/settings/service";
@@ -97,7 +97,7 @@ export async function boardFilterOptions(actor: Actor) {
   const [stores, jobs, recruiters] = await Promise.all([
     db.store.findMany({ where: actor.allStores ? {} : { id: { in: actor.storeIds } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     db.job.findMany({ where: { AND: [visibleJobsWhere(actor), { status: { in: ["OPEN", "PAUSED"] } }] }, select: { id: true, title: true, store: { select: { name: true } } }, orderBy: { title: "asc" } }),
-    db.user.findMany({ where: { status: "ACTIVE", role: { key: { in: ["RECRUITER", "HR_MANAGER", "ADMIN"] } } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    db.user.findMany({ where: { status: "ACTIVE", role: roleKeyIn(["RECRUITER", "HR_MANAGER", "ADMIN"]) }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
   return { stores, jobs, recruiters };
 }

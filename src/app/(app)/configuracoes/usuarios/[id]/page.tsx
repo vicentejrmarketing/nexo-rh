@@ -70,7 +70,7 @@ async function Content({ params }: { params: PageProps<"/configuracoes/usuarios/
               existing={{
                 id: user.id, name: user.name, email: user.email, phone: user.phone, roleKey: user.role.key,
                 status: user.status, storeIds: user.stores.map((s) => s.store.id), isSelf,
-                customPermissions: user.customPermissions, permissions: user.permissions.map((p) => p.permission.key),
+                customPermissions: user.customPermissions, permissions: user.permissions,
               }}
               access={await accessOptions(actor)}
             />
