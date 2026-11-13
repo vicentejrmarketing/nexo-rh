@@ -16,8 +16,6 @@ function readUserForm(formData: FormData) {
     roleKey: String(formData.get("roleKey") ?? "") as RoleKey,
     storeIds: formData.getAll("storeIds").map(String),
     status: String(formData.get("status") ?? "ACTIVE") as "ACTIVE" | "INACTIVE",
-    customPermissions: formData.get("access") === "custom",
-    permissions: formData.getAll("permissions").map(String),
   };
 }
 

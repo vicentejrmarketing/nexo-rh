@@ -22,8 +22,6 @@ export const createUserSchema = z.object({
   phone,
   roleKey: z.enum(ROLE_KEYS, "Selecione um perfil."),
   storeIds,
-  customPermissions: z.boolean().optional(),
-  permissions: z.array(z.string().max(60)).max(100).optional(),
 });
 
 export const updateUserSchema = z.object({
@@ -32,8 +30,6 @@ export const updateUserSchema = z.object({
   roleKey: z.enum(ROLE_KEYS, "Selecione um perfil."),
   storeIds,
   status: z.enum(["ACTIVE", "INACTIVE"]),
-  customPermissions: z.boolean().optional(),
-  permissions: z.array(z.string().max(60)).max(100).optional(),
 });
 
 export type CreateUserInput = z.input<typeof createUserSchema>;

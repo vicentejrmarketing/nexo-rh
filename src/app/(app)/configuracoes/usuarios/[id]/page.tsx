@@ -6,7 +6,7 @@ import { NoPermission } from "@/components/layout/states";
 import { requirePageActor } from "@/server/auth/current-user";
 import { can } from "@/server/authz/authorize";
 import { NotFoundError } from "@/server/errors";
-import { accessOptions, getUser, listAssignableStores, listRoles } from "@/server/modules/users/service";
+import { getUser, listAssignableStores, listRoles } from "@/server/modules/users/service";
 import { formatDateTime } from "@/lib/format";
 import { EditUserForm } from "../user-form";
 import { DeleteUserCard, ResetPasswordCard } from "../danger-zone";
@@ -56,7 +56,6 @@ async function Content({ params }: { params: PageProps<"/configuracoes/usuarios/
             <Badge tone={user.role.key === "ADMIN" ? "dark" : "neutral"}>{user.role.name}</Badge>
             {user.status === "ACTIVE" ? <Badge tone="success">Ativo</Badge> : <Badge>Inativo</Badge>}
             {isSelf && <Badge tone="brand">Você</Badge>}
-            {user.customPermissions && user.role.key !== "ADMIN" && <Badge tone="warning">Acesso personalizado</Badge>}
           </span>
         }
       />
@@ -70,9 +69,7 @@ async function Content({ params }: { params: PageProps<"/configuracoes/usuarios/
               existing={{
                 id: user.id, name: user.name, email: user.email, phone: user.phone, roleKey: user.role.key,
                 status: user.status, storeIds: user.stores.map((s) => s.store.id), isSelf,
-                customPermissions: user.customPermissions, permissions: user.permissions.map((p) => p.permission.key),
               }}
-              access={await accessOptions(actor)}
             />
             {!isSelf && <ResetPasswordCard userId={user.id} userName={user.name} />}
             {!isSelf && <DeleteUserCard userId={user.id} />}

@@ -5,7 +5,7 @@ import { PageHeader, PageSkeleton } from "@/components/ui";
 import { NoPermission } from "@/components/layout/states";
 import { requirePageActor } from "@/server/auth/current-user";
 import { can } from "@/server/authz/authorize";
-import { accessOptions, listAssignableStores, listRoles } from "@/server/modules/users/service";
+import { listAssignableStores, listRoles } from "@/server/modules/users/service";
 import { CreateUserForm } from "../user-form";
 
 export const metadata: Metadata = { title: "Novo usuário" };
@@ -21,7 +21,7 @@ export default function NewUserPage() {
 async function Content() {
   const actor = await requirePageActor();
   if (!can(actor, "users.manage")) return <NoPermission />;
-  const [roles, stores, access] = await Promise.all([listRoles(), listAssignableStores(actor), accessOptions(actor)]);
+  const [roles, stores] = await Promise.all([listRoles(), listAssignableStores(actor)]);
   return (
     <div className="max-w-3xl">
       <nav className="mb-2 text-[13px] text-muted">
@@ -29,7 +29,7 @@ async function Content() {
         <Link href="/configuracoes/usuarios" className="hover:text-ink">Usuários</Link> / Novo
       </nav>
       <PageHeader title="Novo usuário" description="O sistema gera uma senha temporária, trocada pela pessoa no primeiro acesso." />
-      <CreateUserForm roles={roles} stores={stores} access={access} />
+      <CreateUserForm roles={roles} stores={stores} />
     </div>
   );
 }

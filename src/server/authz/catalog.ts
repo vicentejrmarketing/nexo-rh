@@ -42,40 +42,6 @@ export const PERMISSIONS = {
 export type PermissionKey = keyof typeof PERMISSIONS;
 export const ALL_PERMISSIONS = Object.keys(PERMISSIONS) as PermissionKey[];
 
-/** Para fazer algo, é preciso poder ver: ao marcar uma ação, a permissão de ver vem junto. */
-export const PERMISSION_DEPENDS: Partial<Record<PermissionKey, PermissionKey[]>> = {
-  "users.manage": ["users.view"],
-  "permissions.manage": ["users.view"],
-  "stores.manage": ["stores.view"],
-  "jobs.create": ["jobs.view"],
-  "jobs.update": ["jobs.view"],
-  "jobs.delete": ["jobs.view"],
-  "candidates.create": ["candidates.view"],
-  "candidates.update": ["candidates.view"],
-  "candidates.delete": ["candidates.view"],
-  "resumes.view": ["candidates.view"],
-  "pipeline.move": ["pipeline.view"],
-  "interviews.manage": ["interviews.view"],
-  "interviews.evaluate": ["interviews.view"],
-  "messages.send": ["messages.view"],
-  "templates.manage": ["messages.view"],
-  "talentpool.manage": ["talentpool.view"],
-  "reports.export": ["reports.view"],
-  "admission.manage": ["admission.view"],
-};
-
-/** Completa a lista com as permissões de "ver" necessárias e remove chaves desconhecidas. */
-export function withDependencies(keys: Iterable<string>): PermissionKey[] {
-  const out = new Set<PermissionKey>();
-  const add = (k: PermissionKey) => {
-    if (out.has(k)) return;
-    out.add(k);
-    for (const d of PERMISSION_DEPENDS[k] ?? []) add(d);
-  };
-  for (const k of keys) if (k in PERMISSIONS) add(k as PermissionKey);
-  return ALL_PERMISSIONS.filter((k) => out.has(k));
-}
-
 export const ROLE_KEYS = ["ADMIN", "HR_MANAGER", "RECRUITER", "STORE_MANAGER"] as const;
 export type RoleKey = (typeof ROLE_KEYS)[number];
 

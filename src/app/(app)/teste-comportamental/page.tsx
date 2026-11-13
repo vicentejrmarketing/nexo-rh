@@ -39,7 +39,7 @@ function Stat({ label, value, icon: Icon, tone }: { label: string; value: number
 
 async function Content({ searchParams }: { searchParams: PageProps<"/teste-comportamental">["searchParams"] }) {
   const actor = await requirePageActor();
-  if (!can(actor, "behavioral.send") && !can(actor, "behavioral.view")) return <NoPermission />;
+  if (!can(actor, "behavioral.send")) return <NoPermission />;
   const sp = await searchParams;
   const params = { q: one(sp.q), situacao: one(sp.situacao) };
   const [res, settings, h] = await Promise.all([
@@ -57,7 +57,7 @@ async function Content({ searchParams }: { searchParams: PageProps<"/teste-compo
 
   return (
     <>
-      <PageHeader title="Teste Comportamental" description="Avaliação comportamental de candidatos." actions={can(actor, "behavioral.send") ? <GenerateTestButton origin={origin} company={settings.companyName} /> : undefined} />
+      <PageHeader title="Teste Comportamental" description="Avaliação comportamental de candidatos." actions={<GenerateTestButton origin={origin} company={settings.companyName} />} />
       <section className="mb-5 grid gap-4 sm:grid-cols-3" aria-label="Indicadores">
         <Stat label="Testes enviados" value={res.stats.sent} icon={PaperPlaneTilt} tone="bg-ink text-brand" />
         <Stat label="Testes respondidos" value={res.stats.completed} icon={CheckCircle} tone="bg-success-soft text-success" />
