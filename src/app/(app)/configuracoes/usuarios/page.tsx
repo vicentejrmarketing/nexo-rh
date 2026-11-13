@@ -102,6 +102,7 @@ async function Content({ searchParams }: { searchParams: PageProps<"/configuraco
                     </td>
                     <td className="px-5 py-3">
                       <Badge tone={u.role.key === "ADMIN" ? "dark" : "neutral"}>{u.role.name}</Badge>
+                      {u.customPermissions && u.role.key !== "ADMIN" && <Badge tone="warning" className="ml-1">Acesso personalizado</Badge>}
                     </td>
                     <td className="px-5 py-3 text-[13px] text-muted">
                       {u.role.key === "ADMIN"

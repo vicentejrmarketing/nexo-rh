@@ -226,9 +226,22 @@ model Permission {
   key         String           @unique // ex.: users.manage, jobs.update
   module      String
   description String
+  users       UserPermission[]
   roles       RolePermission[]
 
   @@map("permissions")
+}
+
+/// Permissões individuais (só valem quando users.customPermissions = true).
+model UserPermission {
+  userId       String
+  permissionId String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, permissionId])
+  @@index([permissionId])
+  @@map("user_permissions")
 }
 
 model RolePermission {
@@ -249,6 +262,7 @@ model User {
   phone              String?
   passwordHash       String
   roleId             String
+  customPermissions  Boolean    @default(false) // true = usa as permissões do próprio usuário em vez das do perfil
   status             UserStatus @default(ACTIVE)
   mustChangePassword Boolean    @default(true)
   failedLoginCount   Int        @default(0)
@@ -287,6 +301,8 @@ model User {
   sentMessages        Message[]
   uploadedFiles       Attachment[]
   templatesUpdated    MessageTemplate[]
+
+  permissions         UserPermission[]
 
   @@index([roleId])
   @@index([status])
