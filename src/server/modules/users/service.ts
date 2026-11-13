@@ -3,7 +3,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/server/db/client";
 import { audit } from "@/server/audit/log";
 import { authorize, can, type Actor } from "@/server/authz/authorize";
-import { ADMIN_LOCKED, PERMISSIONS, type PermissionKey, type RoleKey } from "@/server/authz/catalog";
+import { ADMIN_LOCKED, PERMISSIONS, withDependencies, type PermissionKey, type RoleKey } from "@/server/authz/catalog";
 import { AppError, ForbiddenError, NotFoundError, ValidationError } from "@/server/errors";
 import { generateTemporaryPassword, hashPassword } from "@/server/auth/password";
 import { revokeAllSessions } from "@/server/auth/session";
@@ -14,6 +14,8 @@ const userSelect = {
   lastLoginAt: true, createdAt: true,
   role: { select: { key: true, name: true } },
   stores: { select: { store: { select: { id: true, name: true, city: true } } } },
+  customPermissions: true,
+  permissions: { select: { permission: { select: { key: true } } } },
 } satisfies Prisma.UserSelect;
 
 export type UserRow = Prisma.UserGetPayload<{ select: typeof userSelect }>;
@@ -75,6 +77,7 @@ export async function createUser(actor: Actor, raw: CreateUserInput, ip?: string
     throw new ValidationError({ storeIds: ["Selecione ao menos uma loja para este perfil."] });
   }
 
+  const custom = resolveCustomAccess(actor, input.roleKey, input.customPermissions, input.permissions);
   const temporaryPassword = generateTemporaryPassword();
   const passwordHash = await hashPassword(temporaryPassword);
   try {
@@ -82,15 +85,16 @@ export async function createUser(actor: Actor, raw: CreateUserInput, ip?: string
       const created = await tx.user.create({
         data: {
           name: input.name, email: input.email, phone: input.phone ?? null, roleId: role.id, passwordHash,
-          mustChangePassword: true,
+          mustChangePassword: true, customPermissions: custom !== null,
           stores: { create: storeIds.map((storeId) => ({ storeId })) },
         },
         select: { id: true, name: true, email: true },
       });
+      await writeUserPermissions(tx, created.id, custom);
       await audit(tx, {
         actorId: actor.id, action: "user.create", entityType: "User", entityId: created.id, ipAddress: ip,
         summary: `Criou o usuário ${created.name} (${role.name})`,
-        after: { name: created.name, email: created.email, role: role.key, storeIds },
+        after: { name: created.name, email: created.email, role: role.key, storeIds, access: custom ?? "padrão do perfil" },
       });
       return created;
     });
@@ -101,6 +105,26 @@ export async function createUser(actor: Actor, raw: CreateUserInput, ip?: string
     }
     throw e;
   }
+}
+
+/**
+ * Acesso personalizado: só quem gerencia permissões define, nunca para o perfil Administrador e sem
+ * conceder o que a própria pessoa não tem. Devolve null quando o usuário segue o padrão do perfil.
+ */
+function resolveCustomAccess(actor: Actor, roleKey: RoleKey, custom: boolean | undefined, keys: string[] | undefined): PermissionKey[] | null {
+  if (!custom || roleKey === "ADMIN") return null;
+  authorize(actor, "permissions.manage");
+  const list = withDependencies(keys ?? []);
+  const beyond = list.filter((k) => !actor.permissions.has(k));
+  if (beyond.length) throw new ForbiddenError("Você não pode conceder acessos que você mesmo não tem.");
+  return list;
+}
+
+async function writeUserPermissions(tx: Prisma.TransactionClient, userId: string, keys: PermissionKey[] | null) {
+  await tx.userPermission.deleteMany({ where: { userId } });
+  if (!keys?.length) return;
+  const perms = await tx.permission.findMany({ where: { key: { in: keys } }, select: { id: true } });
+  await tx.userPermission.createMany({ data: perms.map((p) => ({ userId, permissionId: p.id })) });
 }
 
 async function countActiveAdmins(excludeUserId?: string) {
@@ -114,9 +138,21 @@ export async function updateUser(actor: Actor, id: string, raw: UpdateUserInput,
   const input = parsed.data;
   const current = await db.user.findUnique({
     where: { id },
-    select: { id: true, name: true, phone: true, status: true, role: { select: { key: true } }, stores: { select: { storeId: true } } },
+    select: {
+      id: true, name: true, phone: true, status: true, role: { select: { key: true } }, stores: { select: { storeId: true } },
+      customPermissions: true, permissions: { select: { permission: { select: { key: true } } } },
+    },
   });
   if (!current) throw new NotFoundError("Usuário não encontrado.");
+  // Sem permissão para gerenciar permissões, o acesso individual atual é mantido como está.
+  const managesAccess = actor.permissions.has("permissions.manage");
+  const currentCustom = current.customPermissions ? withDependencies(current.permissions.map((p) => p.permission.key)) : null;
+  const custom = managesAccess
+    ? resolveCustomAccess(actor, input.roleKey, input.customPermissions, input.permissions)
+    : input.roleKey === "ADMIN" ? null : currentCustom;
+  if (id === actor.id && custom && !(["users.manage", "permissions.manage"] as PermissionKey[]).every((k) => custom.includes(k)) && actor.permissions.has("permissions.manage")) {
+    throw new ForbiddenError("Você não pode retirar o seu próprio acesso de administração.");
+  }
 
   const role = await roleByKey(input.roleKey);
   const storeIds = role.allStores ? [] : [...new Set(input.storeIds)];
@@ -131,15 +167,18 @@ export async function updateUser(actor: Actor, id: string, raw: UpdateUserInput,
   const before = {
     name: current.name, phone: current.phone, status: current.status, role: current.role.key,
     storeIds: current.stores.map((s) => s.storeId).sort(),
+    access: currentCustom ?? "padrão do perfil",
   };
-  const after = { name: input.name, phone: input.phone ?? null, status: input.status, role: input.roleKey, storeIds: [...storeIds].sort() };
-  const accessChanged = before.role !== after.role || before.status !== after.status || before.storeIds.join() !== after.storeIds.join();
+  const after = { name: input.name, phone: input.phone ?? null, status: input.status, role: input.roleKey, storeIds: [...storeIds].sort(), access: custom ?? "padrão do perfil" };
+  const accessChanged = before.role !== after.role || before.status !== after.status || before.storeIds.join() !== after.storeIds.join()
+    || JSON.stringify(before.access) !== JSON.stringify(after.access);
 
   await db.$transaction(async (tx) => {
     await tx.user.update({
       where: { id },
-      data: { name: input.name, phone: input.phone ?? null, status: input.status, roleId: role.id },
+      data: { name: input.name, phone: input.phone ?? null, status: input.status, roleId: role.id, customPermissions: custom !== null },
     });
+    await writeUserPermissions(tx, id, custom);
     await tx.userStore.deleteMany({ where: { userId: id } });
     if (storeIds.length) await tx.userStore.createMany({ data: storeIds.map((storeId) => ({ userId: id, storeId })) });
     await audit(tx, {
@@ -227,4 +266,16 @@ export async function setRolePermission(actor: Actor, roleKey: RoleKey, permissi
       summary: `${enabled ? "Concedeu" : "Retirou"} "${PERMISSIONS[permissionKey].description}" do perfil ${role.name}`,
     });
   });
+}
+
+/** Dados para escolher o acesso individual no formulário de usuário. */
+export async function accessOptions(actor: Actor) {
+  authorize(actor, "users.view");
+  const roles = await db.role.findMany({ select: { key: true, permissions: { select: { permission: { select: { key: true } } } } } });
+  return {
+    catalog: Object.entries(PERMISSIONS).map(([key, p]) => ({ key, module: p.module, description: p.description })),
+    roleDefaults: Object.fromEntries(roles.map((r) => [r.key, r.permissions.map((p) => p.permission.key)])) as Record<string, string[]>,
+    canManage: can(actor, "permissions.manage"),
+    grantable: [...actor.permissions] as string[],
+  };
 }

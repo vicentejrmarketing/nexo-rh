@@ -40,7 +40,7 @@ export type TestFilters = { q?: string; status?: string; page?: number };
 const PAGE = 30;
 
 export async function listTests(actor: Actor, f: TestFilters = {}) {
-  authorize(actor, "behavioral.send");
+  if (!can(actor, "behavioral.view")) authorize(actor, "behavioral.send");
   const now = new Date();
   const base: Prisma.BehavioralTestWhereInput = { candidate: visibleCandidatesWhere(actor) };
   const and: Prisma.BehavioralTestWhereInput[] = [base];
